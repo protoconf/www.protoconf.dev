@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkprotoconf=self.webpackChunkprotoconf||[]).push([[9267],{8289:o=>{o.exports=JSON.parse('[{"label":"protoconf","permalink":"/blog/tags/protoconf","count":1},{"label":"documentation","permalink":"/blog/tags/documentation","count":1}]')}}]);
