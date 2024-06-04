@@ -9,7 +9,7 @@ protoconf allows for the generation of multiple config outputs from a single Sta
 
 To use this feature, you should use the `.mpconf` extension for your Starlark file. Then, you can return a dictionary from your `main` function, where each key-value pair represents a different configuration output. Here's an example:
 
-```python title=./src/myproject/server_config.mpconf
+```python title="src/myproject/server_config.mpconf" showLineNumbers
 load("//myproject/v1/server_config.proto", "ServerConfiguration")
 load("//myproject/helpers.pinc", "create_default_config")
 

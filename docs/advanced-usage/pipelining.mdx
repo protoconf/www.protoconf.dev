@@ -9,7 +9,7 @@ In more advanced scenarios, you may want to implement a pipeline for config mani
 
 The following is an example of how you can implement config manipulation pipelining in protoconf:
 
-```python title=./src/myproject/helpers.pinc
+```python title="src/myproject/helpers.pinc" showLineNumbers
 load("//myproject/v1/server_config.proto", "ServerConfiguration")
 
 def Chain(msg, *hooks):
@@ -38,7 +38,7 @@ api = struct(
 )
 ```
 
-```python title=./src/myproject/server_config.pconf
+```python title="rc/myproject/server_config.pconf" showLineNumbers
 load("//myproject/helpers.pinc", "api")
 
 def main():

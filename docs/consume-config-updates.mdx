@@ -81,7 +81,7 @@ With the above configurations, run `buf generate` to generate the code for your 
 
 In Go, use the grpc package to create a client and subscribe to configuration updates:
 
-```go
+```go showLineNumbers
 package main
 
 import (
@@ -91,7 +91,7 @@ import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     "github.com/golang/protobuf/ptypes"
-    pb "gen/go/protoconf/v1"
+    protoconfpb "github.com/protoconf/protoconf/pb/protoconf/v1"
     mypb "gen/go/myproject/v1"
 )
 
@@ -102,9 +102,9 @@ func main() {
     }
     defer conn.Close()
 
-    client := pb.NewProtoconfServiceClient(conn)
+    client := protoconfpb.NewProtoconfServiceClient(conn)
 
-    stream, err := client.SubscribeForConfig(context.Background(), &pb.ConfigSubscriptionRequest{
+    stream, err := client.SubscribeForConfig(context.Background(), &protoconfpb.ConfigSubscriptionRequest{
         Path: "myproject/server_config",
     })
     if err != nil {
@@ -118,7 +118,7 @@ func main() {
         }
 
         var config mypb.ServerConfiguration
-        if err := ptypes.UnmarshalAny(configUpdate.Value, &config); err != nil {
+        if err := configUpdate.Value.UnmarshalTo(&config); err != nil {
             log.Fatalf("Failed to unmarshal config update: %v", err)
         }
 
