@@ -13,21 +13,19 @@ protoconf provides a gRPC service that allows your application to subscribe to c
 
 This guide will walk you through how to subscribe to configuration updates using the protoconf agent in various languages: Go, Python, Node.js, Rust, and Java.
 
-## protoconf Agent
+## protoconf Dev server
 
-To start the protoconf agent in development mode, use the following command:
+To start protoconf in development mode, use the following command:
 
 ```bash
-protoconf agent -dev .
+protoconf devserver .
 ```
 
-The protoconf agent implements the following gRPC service:
+The protoconf agent implements the following gRPC service ([See full proto file](https://github.com/protoconf/protoconf/blob/main/pb/protoconf/v1/protoconf.proto#L66)):
 
 ```protobuf
 syntax = "proto3";
-package v1;
-
-option java_package = "com.protoconf.agent.api.v1";
+package protoconf.v1;
 
 import "google/protobuf/any.proto";
 

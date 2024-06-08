@@ -1,6 +1,6 @@
 {
-  "label": "Advanced Usage",
-  "position": 5,
+  "label": "Composing",
+  "position": 3,
   "link": {
     "type": "generated-index",
     "description": "Learn more advanced techniques to use protoconf."
