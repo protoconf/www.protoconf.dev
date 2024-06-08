@@ -1,0 +1,40 @@
+---
+sidebar_position: 4
+---
+
+# Reflection (UI)
+
+:::info
+This feature available since `v0.2.0`
+:::
+
+The protoconf server supports gRPC reflection to auto-generate UI for configurations. To allow reflection for your config struct, simply define a `service` containing a `rpc` method definition with your config struct as the input message `protoconf.v1.ConfigMutationResponse` as the result message.
+
+```protobuf title="src/myproject/server_config.proto" showLineNumbers
+syntax = "proto3";
+
+import "google/protobuf/duration.proto";
+// highlight-next-line
+import "protoconf/v1/protoconf.proto";
+
+package myproject.v1;
+
+message ServerConfiguration {
+  bool is_debug = 1;
+  uint32 max_connections = 2;
+  float max_payload_size_mb = 3;
+  google.protobuf.Duration request_timeout = 4;
+}
+
+// highlight-start
+service ServerConfigurationService {
+  rpc Set(ServerConfiguration) returns (protoconf.v1.ConfigMutationResponse);
+}
+// highlight-end
+```
+
+Then run the protoconf server (`protoconf serve .`) or (`protoconf devserver .`) and go to http://localhost:4300.
+
+Use the request `metadata` to define the mutation `path`.
+
+![Protoconf UI](/img/grpc-ui.png)

@@ -10,9 +10,7 @@ In addition to defining helper functions within a single starlark file, protocon
 
 Here is an example:
 
-`./src/myproject/helpers.pinc`:
-
-```python
+```python title="src/myproject/helpers.pinc" showLineNumbers
 load("//myproject/v1/server_config.proto", "ServerConfiguration")
 
 # A global variable
@@ -28,9 +26,7 @@ def create_default_config():
     )
 ```
 
-`./src/myproject/server_config.pconf`:
-
-```python
+```python title="src/myproject/server_config.pconf" showLineNumbers
 load("//myproject/helpers.pinc", "create_default_config", "default_request_timeout")
 
 def main():

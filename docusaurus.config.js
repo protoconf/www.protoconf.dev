@@ -1,8 +1,7 @@
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion
 
-const lightCodeTheme = require('prism-react-renderer/themes/github');
-const darkCodeTheme = require('prism-react-renderer/themes/dracula');
+import { themes as prismThemes } from 'prism-react-renderer';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -53,8 +52,10 @@ const config = {
           lastVersion: 'current',
           versions: {
             current: {
+              label: 'v0.2.0',
+            },
+            "0.1.7": {
               label: 'v0.1.7',
-              path: '0.1.7',
             }
           }
         },
@@ -85,6 +86,12 @@ const config = {
           srcDark: 'img/protoconf_inverse.png',
         },
         items: [
+          {
+            type: 'doc',
+            docId: 'getting-started/getting-started',
+            position: 'left',
+            label: 'Get Started',
+          },
           {
             type: 'doc',
             docId: 'intro',
@@ -148,7 +155,7 @@ const config = {
             items: [
               {
                 label: 'Tutorial',
-                to: 'docs/0.1.7/intro',
+                to: 'docs/intro',
               },
             ],
           },
@@ -188,8 +195,8 @@ const config = {
         },
       },
       prism: {
-        theme: lightCodeTheme,
-        darkTheme: darkCodeTheme,
+        theme: prismThemes.oneLight,
+        darkTheme: prismThemes.oneDark,
         additionalLanguages: ['protobuf', 'rust', 'java', 'docker' ],
       },
     }),

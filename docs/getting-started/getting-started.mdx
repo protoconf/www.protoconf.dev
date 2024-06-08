@@ -22,7 +22,7 @@ For other platforms, download the latest release from the [protoconf GitHub repo
 
 First, you'll need to define your configuration structure using Protobuf. The Protobuf files should be stored under `./src/<projectname>/<version>/<filename>.proto`. For example:
 
-```protobuf title=./src/myproject/v1/server_config.proto
+```protobuf title="src/myproject/v1/server_config.proto" showLineNumbers
 syntax = "proto3";
 
 package myproject.v1;
@@ -41,7 +41,7 @@ In this example, `ServerConfiguration` is the configuration structure for a serv
 
 Next, you'll write the configuration logic in a Starlark file, which should use the `.pconf` extension and be stored under `./src/`. For example:
 
-```python title=./src/myproject/server_config.pconf
+```python title="src/myproject/server_config.pconf" showLineNumbers
 load("//myproject/v1/server_config.proto", "ServerConfiguration")
 load("//google/protobuf/duration.proto", "Duration")
 

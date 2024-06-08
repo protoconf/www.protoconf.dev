@@ -6,15 +6,39 @@ sidebar_position: 3
 
 # Configuration Validation
 
-protoconf provides a way to add validation rules to your configuration. These rules allow you to ensure that the configuration values meet certain criteria before they are used by your application. Validation rules are written in separate Starlark files with the `-validator` suffix, and they are associated with your configuration using the `add_validator` function.
+Protoconf provides a way to add validation rules to your configuration. These rules allow you to ensure that the configuration values meet certain criteria before they are used by your application. There are two ways to add validation rules: using annotations in your `.proto` files, or writing separate Starlark validation files.
 
-## Writing a Validation Rule
+## Using Annotations for Validation
+
+You can add validation rules directly to your `.proto` files using the `validate/validate.proto` and `buf/validate/validate.proto` annotations. These annotations allow you to specify constraints on your message fields.
+
+First, import the `validate.proto` file in your `.proto` file:
+
+```protobuf
+import "validate/validate.proto";
+```
+
+Then, you can add validation rules to your message fields using the `validate.rules` option:
+
+```protobuf
+message ServerConfiguration {
+    int32 max_connections = 1 [(validate.rules).int32.gt = 0];
+    double max_payload_size_mb = 2 [(validate.rules).double = {gt: 0.1, lt: 100.0}];
+    int32 request_timeout = 3 [(validate.rules).int32.gt = 0];
+}
+```
+
+These annotations will be checked when the message is deserialized, and if any of the constraints are not met, an error will be thrown. This allows you to catch invalid configurations early, before they cause problems in your application.
+
+## Writing a Validation Rule with Starlark (Advanced)
+
+For more complex validation rules, you can write separate Starlark files with the `-validator` suffix. These files are associated with your configuration using the `add_validator` function.
 
 Create a new Starlark file with the `-validator` suffix. For example, for a configuration defined in `./src/myproject/v1/server_config.proto`, the validation file would be `./src/myproject/v1/server_config.proto-validator`.
 
 In this file, load the configuration message, define a validation function, and then add the validator:
 
-```python title=./src/myproject/v1/server_config.proto-valdator
+```python title=./src/myproject/v1/server_config.proto-validator
 load("//myproject/v1/server_config.proto", "ServerConfiguration")
 
 def validate_server_config(config):

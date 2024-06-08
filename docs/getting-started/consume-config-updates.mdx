@@ -13,21 +13,19 @@ protoconf provides a gRPC service that allows your application to subscribe to c
 
 This guide will walk you through how to subscribe to configuration updates using the protoconf agent in various languages: Go, Python, Node.js, Rust, and Java.
 
-## protoconf Agent
+## protoconf Dev server
 
-To start the protoconf agent in development mode, use the following command:
+To start protoconf in development mode, use the following command:
 
 ```bash
-protoconf agent -dev .
+protoconf devserver .
 ```
 
-The protoconf agent implements the following gRPC service:
+The protoconf agent implements the following gRPC service ([See full proto file](https://github.com/protoconf/protoconf/blob/main/pb/protoconf/v1/protoconf.proto#L66)):
 
 ```protobuf
 syntax = "proto3";
-package v1;
-
-option java_package = "com.protoconf.agent.api.v1";
+package protoconf.v1;
 
 import "google/protobuf/any.proto";
 
@@ -81,7 +79,7 @@ With the above configurations, run `buf generate` to generate the code for your 
 
 In Go, use the grpc package to create a client and subscribe to configuration updates:
 
-```go
+```go showLineNumbers
 package main
 
 import (
@@ -91,7 +89,7 @@ import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     "github.com/golang/protobuf/ptypes"
-    pb "gen/go/protoconf/v1"
+    protoconfpb "github.com/protoconf/protoconf/pb/protoconf/v1"
     mypb "gen/go/myproject/v1"
 )
 
@@ -102,9 +100,9 @@ func main() {
     }
     defer conn.Close()
 
-    client := pb.NewProtoconfServiceClient(conn)
+    client := protoconfpb.NewProtoconfServiceClient(conn)
 
-    stream, err := client.SubscribeForConfig(context.Background(), &pb.ConfigSubscriptionRequest{
+    stream, err := client.SubscribeForConfig(context.Background(), &protoconfpb.ConfigSubscriptionRequest{
         Path: "myproject/server_config",
     })
     if err != nil {
@@ -118,7 +116,7 @@ func main() {
         }
 
         var config mypb.ServerConfiguration
-        if err := ptypes.UnmarshalAny(configUpdate.Value, &config); err != nil {
+        if err := configUpdate.Value.UnmarshalTo(&config); err != nil {
             log.Fatalf("Failed to unmarshal config update: %v", err)
         }
 
