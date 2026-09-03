@@ -6,6 +6,12 @@
   // The build itself is configured in the Cloudflare dashboard, not here:
   //   Build command:  yarn build
   //   Deploy command: npx wrangler deploy
+  //
+  // wrangler is deliberately NOT a devDependency here: wrangler 4 requires
+  // Node >=22, while .github/workflows/*.yml pin node-version 18, so adding it
+  // breaks `yarn install --frozen-lockfile` in CI. Cloudflare's build image
+  // supplies wrangler for the deploy command. Pin it here only if the
+  // workflows move to Node 22 first.
   "name": "www-protoconf-dev",
   "compatibility_date": "2026-09-03",
   "assets": {
