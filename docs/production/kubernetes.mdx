@@ -1,0 +1,149 @@
+---
+id: kubernetes
+title: Running on Kubernetes
+sidebar_position: 6
+---
+
+# Running on Kubernetes
+
+:::info New in v0.2.0
+:::
+
+`configmaps` is a key-value backend that stores materialized configs directly
+in Kubernetes ConfigMaps. A cluster can then distribute protoconf configs
+without running Consul, etcd or ZooKeeper alongside it.
+
+It is supported by both `protoconf insert` and `protoconf agent`:
+
+```bash
+# From CI, against the cluster your kubeconfig points at
+protoconf insert -store configmaps -namespace protoconf myproject/server_config
+
+# In the cluster
+protoconf agent -store configmaps -namespace protoconf
+```
+
+## Credentials and namespace
+
+The store uses the in-cluster service account when it finds one, and falls back
+to your local kubeconfig otherwise — so the same command works from CI and from
+a pod.
+
+The namespace is resolved in this order:
+
+1. `-namespace`, or `PROTOCONF_AGENT_NAMESPACE` / `PROTOCONF_INSERTER_NAMESPACE`
+2. `POD_NAMESPACE`, which you can set from the downward API
+3. The namespace of the mounted service account token
+4. `default`
+
+```yaml
+env:
+  - name: POD_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
+```
+
+## RBAC
+
+The agent reads and watches ConfigMaps; the inserter also creates and updates
+them. Grant the agent's service account the read half:
+
+```yaml title=agent-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: protoconf-agent
+  namespace: protoconf
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: protoconf-agent
+  namespace: protoconf
+subjects:
+  - kind: ServiceAccount
+    name: protoconf-agent
+    namespace: protoconf
+roleRef:
+  kind: Role
+  name: protoconf-agent
+  apiGroup: rbac.authorization.k8s.io
+```
+
+Whatever identity runs `protoconf insert` additionally needs `create`, `update`
+and `delete` on ConfigMaps in the target namespace.
+
+## How keys map to ConfigMaps
+
+A config path becomes a ConfigMap name, and the leaf becomes a key inside it.
+Slashes become `---`, underscores become `--`, and the whole name is
+lowercased — the transformation exists because ConfigMap names must be valid
+DNS subdomains.
+
+For example, `myproject/server_config/config.data` is stored as:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myproject---server--config
+  namespace: protoconf
+data:
+  config.data: "..."
+```
+
+This is worth knowing when you go looking for a config with `kubectl`, and when
+you size your paths: a very deep config path produces a very long ConfigMap
+name.
+
+## Deploying the agent
+
+The agent is usually run as a DaemonSet, so every node has a local endpoint,
+or as a sidecar next to the application that consumes it. A minimal Deployment:
+
+```yaml title=agent.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: protoconf-agent
+  namespace: protoconf
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: protoconf-agent }
+  template:
+    metadata:
+      labels: { app: protoconf-agent }
+    spec:
+      serviceAccountName: protoconf-agent
+      containers:
+        - name: agent
+          image: ghcr.io/protoconf/protoconf:v0.2.0
+          args:
+            - agent
+            - -store=configmaps
+            - -log-as-json
+          ports:
+            - { name: grpc, containerPort: 4300 }
+            - { name: admin, containerPort: 4380 }
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+```
+
+Point your Prometheus scrape at the `admin` port's `/metrics`, as described in
+[Observability](./observability.mdx).
+
+## Rollouts across namespaces
+
+A `ConfigRollout` can carry a `namespace`, and `protoconf insert` will write
+that rollout into the named namespace rather than the one on the command line.
+That makes it possible to stage a change into a canary namespace first. See
+[Staged Rollouts](./rollouts.mdx).

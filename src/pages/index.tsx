@@ -17,8 +17,13 @@ function HomepageHeader() {
         <div className={styles.buttons}>
           <Link
             className="button button--secondary button--lg"
-            to="/docs/0.1.7/intro">
+            to="/docs/0.2.0/intro">
             Getting Started
+          </Link>
+          <Link
+            className="button button--outline button--secondary button--lg"
+            to="/docs/0.2.0/whats-new-0.2.0">
+            What's new in v0.2.0
           </Link>
         </div>
       </div>
@@ -30,8 +35,8 @@ export default function Home(): JSX.Element {
   const { siteConfig } = useDocusaurusContext();
   return (
     <Layout
-      title={`Hello from ${siteConfig.title}`}
-      description="Description will go into a meta tag in <head />">
+      title={siteConfig.title}
+      description={siteConfig.tagline}>
       <HomepageHeader />
       <main>
         <HomepageFeatures />

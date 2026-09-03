@@ -1,14 +1,66 @@
 ---
 id: validation
 title: Configuration Validation
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 # Configuration Validation
 
-protoconf provides a way to add validation rules to your configuration. These rules allow you to ensure that the configuration values meet certain criteria before they are used by your application. Validation rules are written in separate Starlark files with the `-validator` suffix, and they are associated with your configuration using the `add_validator` function.
+protoconf provides two ways to add validation rules to your configuration, and
+runs both at compile time:
 
-## Writing a Validation Rule
+- **Constraints declared in the `.proto` file**, using
+  [protovalidate](https://github.com/bufbuild/protovalidate). Good for the rules
+  that belong to the schema itself — ranges, required fields, string formats.
+- **Starlark rules**, written in files with the `-validator` suffix and attached
+  with `add_validator`. Good for rules that need real logic — cross-field
+  invariants, lookups, anything you would write as code.
+
+A config has to satisfy both before it is materialized.
+
+## Constraints in the schema
+
+:::info New in v0.2.0
+:::
+
+Add `buf.build/bufbuild/protovalidate` to your protos and declare the
+constraints alongside the fields they govern:
+
+```protobuf title=./src/myproject/v1/server_config.proto
+syntax = "proto3";
+
+package myproject.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+
+message ServerConfiguration {
+  bool is_debug = 1;
+  uint32 max_connections = 2 [(buf.validate.field).uint32.gte = 1];
+  float max_payload_size_mb = 3 [
+    (buf.validate.field).float.gte = 0.1,
+    (buf.validate.field).float.lte = 100.0
+  ];
+  google.protobuf.Duration request_timeout = 4 [
+    (buf.validate.field).duration.gte = {seconds: 1}
+  ];
+}
+```
+
+`protoconf compile` rejects any message that violates these constraints,
+including messages nested inside other messages, inside `repeated` fields, and
+inside map keys and values.
+
+Because the constraints live in the `.proto` file, every consumer of that
+schema — not just protoconf — sees the same rules.
+
+## Starlark validation rules
+
+Validation rules are written in separate Starlark files with the `-validator`
+suffix, and they are associated with your configuration using the
+`add_validator` function.
+
+### Writing a validation rule
 
 Create a new Starlark file with the `-validator` suffix. For example, for a configuration defined in `./src/myproject/v1/server_config.proto`, the validation file would be `./src/myproject/v1/server_config.proto-validator`.
 
@@ -35,3 +87,7 @@ In this example, `validate_server_config` is a function that checks whether `max
 After defining the validation function, `add_validator()` is called to associate the validation function with the `ServerConfiguration` message. Now, whenever a `ServerConfiguration` object is created, its values will be validated according to these rules.
 
 With validation in place, you can ensure that your configuration values are always within acceptable ranges, preventing errors due to incorrect configurations.
+
+When a validator fails, `protoconf compile` prints the Starlark backtrace that
+led to the failing value, so you can see which line of your configuration
+produced it rather than only which rule rejected it.

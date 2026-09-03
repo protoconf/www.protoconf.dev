@@ -12,11 +12,13 @@ You can install protoconf directly onto your server or use Docker. Docker images
 
 ```bash
 # Docker Hub
-docker pull protoconf/protoconf:<version>
+docker pull protoconf/protoconf:v0.2.0
 
 # GitHub Container Registry
-docker pull ghcr.io/protoconf/protoconf:<version>
+docker pull ghcr.io/protoconf/protoconf:v0.2.0
 ```
+
+Pin an explicit tag in production rather than tracking a floating one.
 
 For macOS, you can also use `brew` to install protoconf:
 
@@ -36,7 +38,7 @@ Secure sensitive configuration data using environment variables or secure storag
 
 ## Config Backend
 
-In a production environment, you should use a key-value store as a config backend. Protoconf supports Consul, Etcd, and Zookeeper as config backends. To specify the config backend, use the `-store` flag and provide the address of the store with the `-store-address` flag. For example:
+In a production environment, you should use a key-value store as a config backend. Protoconf supports Consul, etcd, ZooKeeper and, since v0.2.0, [Kubernetes ConfigMaps](./kubernetes.mdx) as config backends. To specify the config backend, use the `-store` flag and provide the address of the store with the `-store-address` flag. For example:
 
 ```bash
 protoconf agent -store consul -store-address 10.0.0.1:8500
@@ -54,9 +56,12 @@ In a production environment, the protoconf agent should be run as a service, eit
 
 The agent has several configuration options:
 
-- `-grpc-address`: The address for the gRPC interface (default is ":4300").
-- `-http-address`: The address for the Prometheus HTTP interface (default is ":9143").
+- `-grpc-address`: The address for the gRPC interface (default is `:4300`).
+- `-http-address`: The address for the admin HTTP interface, which serves `/metrics`, `/debug/pprof` and `GET /v1/config/...` (default is `:4380`).
 - `-dev`: Development mode. Watch a local Protoconf directory for file changes. This should not be used in production.
+- `-enable-rollout`: Resolve [staged rollouts](./rollouts.mdx).
+- `-enable-otel`: Export OpenTelemetry traces and metrics. See [Observability](./observability.mdx).
+- `-log-level`, `-log-as-json`, `-log-source`: Control structured logging.
 
 For example, to start the agent with specific gRPC and HTTP addresses:
 
@@ -64,9 +69,23 @@ For example, to start the agent with specific gRPC and HTTP addresses:
 protoconf agent -grpc-address :5000 -http-address :9000
 ```
 
+Every option is also settable through a `PROTOCONF_AGENT_*` environment
+variable or a `-config-file`. The full list, and the precedence between the
+three, is in the [CLI Configuration Reference](../cli-reference.mdx).
+
+:::caution
+The admin HTTP listener is unauthenticated and unencrypted, and since v0.2.0 it
+also serves config reads at `GET /v1/config/...`. Bind it to an internal
+interface.
+:::
+
 ## Monitoring
 
-Monitor the protoconf agent's logs for any potential issues. Consider integrating with a logging system to centralize logs and enable alerting on errors.
+Scrape `/metrics` on the agent's admin listener with Prometheus, and monitor
+the agent's logs for potential issues. `-log-as-json` makes the logs usable by
+a log pipeline without extra parsing. If you run OpenTelemetry, `-enable-otel`
+exports traces and metrics to your collector. See
+[Observability](./observability.mdx) for the metrics, spans and flags.
 
 ## Updates and Migrations
 

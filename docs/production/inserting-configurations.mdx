@@ -14,7 +14,7 @@ The basic usage of the `protoconf insert` command is as follows:
 protoconf insert -store <store> -store-address <store-address> <config>...
 ```
 
-The `<store>` parameter specifies the type of key-value store you are using (either `consul`, `zookeeper`, or `etcd`). The `<store-address>` parameter is the address of your key-value store.
+The `<store>` parameter specifies the type of key-value store you are using: `consul`, `zookeeper`, `etcd`, or — since v0.2.0 — [`configmaps`](./kubernetes.mdx). The `<store-address>` parameter is the address of your key-value store.
 
 The `<config>...` parameters are one or more configuration paths that you want to insert. These paths correspond to the paths that your applications will use when requesting configurations from the protoconf agent.
 
@@ -25,6 +25,28 @@ protoconf insert -store etcd -store-address etcd:2379 myproject/server_config/de
 ```
 
 Note that the user running this command needs to have access to the key-value store.
+
+## Metadata
+
+Each insertion records where the configuration came from: the commit, the
+committer and author, and when it was committed, authored and inserted. The
+agent reports that metadata as labels on its
+[config version metric](./observability.mdx), which is what lets you answer
+"which commit is this host actually running?" during an incident.
+
+The inserter reads this from the git repository it is run in, so run
+`protoconf insert` from a checkout rather than from a bare copy of
+`materialized_config/`.
+
+## Staged Rollouts
+
+A configuration compiled with a `ConfigRollout` is not inserted all at once.
+`protoconf insert` publishes each stage in turn, waits out its cooldown, and
+promotes the config to stable only after the last stage. The command stays in
+the foreground for the whole plan, and interrupting it rolls every agent back
+to the stable config.
+
+See [Staged Rollouts](./rollouts.mdx).
 
 ## Deleting Configurations
 

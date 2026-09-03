@@ -1,7 +1,7 @@
 ---
 id: consume-config-updates
 title: Consuming Configuration Updates
-sidebar_position: 4
+sidebar_position: 5
 ---
 
 import Tabs from "@theme/Tabs";
@@ -10,6 +10,14 @@ import TabItem from "@theme/TabItem";
 # Consuming Configuration Updates
 
 protoconf provides a gRPC service that allows your application to subscribe to configuration updates. This service is provided by the protoconf agent, which can run in development mode and listen on `0.0.0.0:4300`.
+
+There are two ways to read a config:
+
+- **`SubscribeForConfig`** opens a stream and pushes every update as it lands.
+  This is what long-running services should use.
+- **`GetConfig`** reads the current value once and returns. Added in v0.2.0, for
+  jobs, scripts and init containers that do not outlive a single read. It is
+  also reachable over plain HTTP.
 
 This guide will walk you through how to subscribe to configuration updates using the protoconf agent in various languages: Go, Python, Node.js, Rust, and Java.
 
@@ -25,24 +33,40 @@ The protoconf agent implements the following gRPC service:
 
 ```protobuf
 syntax = "proto3";
-package v1;
+package protoconf.v1;
 
-option java_package = "com.protoconf.agent.api.v1";
+option java_package = "com.protoconf.datatypes.v1";
 
 import "google/protobuf/any.proto";
+import "google/api/httpbody.proto";
 
 message ConfigSubscriptionRequest {
     string path = 1;
+    string channel = 2;
+}
+
+message ConfigRequest {
+    string path = 1;
+    string channel = 2;
 }
 
 message ConfigUpdate {
     google.protobuf.Any value = 1;
+    string error = 2;
+    google.api.HttpBody raw = 3;
 }
 
 service ProtoconfService{
     rpc SubscribeForConfig(ConfigSubscriptionRequest) returns (stream ConfigUpdate);
+    rpc GetConfig(ConfigRequest) returns (ConfigUpdate);
 }
 ```
+
+Two fields are new in v0.2.0. `channel` on the request selects a
+[rollout channel](./production/rollouts.mdx) for this subscriber, overriding the
+agent's own channel. `raw` on the response carries the config's rendered JSON
+alongside the typed `value`, which is what makes the HTTP endpoint below
+possible.
 
 You can use it as a dependency from buf: `buf.build/protoconf/protoconf`.
 
@@ -266,3 +290,62 @@ public class Main {
 In this example, the `SubscribeForConfig` RPC is used to subscribe for updates to the `myproject/server_config` configuration. The received `ConfigUpdate` messages are unpacked into `ServerConfiguration` objects which can then be used by your application.
 
 These examples provide a starting point for integrating protoconf into your applications. As you adapt these examples to your specific needs, you may find additional resources on the gRPC, protobuf, and protoconf libraries helpful.
+
+## One-shot reads
+
+:::info New in v0.2.0
+:::
+
+Not every consumer is a long-running service. A migration job, a shell script
+or an init container wants the current value and nothing more. `GetConfig` is
+the unary counterpart to `SubscribeForConfig`:
+
+```go
+update, err := client.GetConfig(ctx, &pb.ConfigRequest{
+    Path: "myproject/server_config",
+})
+if err != nil {
+    log.Fatalf("Failed to get config: %v", err)
+}
+
+var config mypb.ServerConfiguration
+if err := update.Value.UnmarshalTo(&config); err != nil {
+    log.Fatalf("Failed to unmarshal config: %v", err)
+}
+```
+
+A path that does not exist in the store returns `NOT_FOUND` rather than an
+empty value.
+
+### Over plain HTTP
+
+The agent transcodes `GetConfig` onto its admin HTTP listener, so anything that
+can make an HTTP request can read a config — no generated stubs, no gRPC
+client:
+
+```bash
+curl http://localhost:4380/v1/config/myproject/server_config
+```
+
+The response body is the config's rendered JSON, served verbatim with
+`Content-Type: application/json`. A missing config returns `404`.
+
+```yaml title=Kubernetes init container
+initContainers:
+  - name: fetch-config
+    image: curlimages/curl
+    command:
+      - sh
+      - -c
+      - curl -fsS http://protoconf-agent:4380/v1/config/myproject/server_config > /config/server.json
+```
+
+:::caution
+The HTTP endpoint is served by the admin listener, which is unauthenticated and
+unencrypted. Keep it on an internal network. Anything crossing a trust boundary
+should use the gRPC API with TLS.
+:::
+
+`GetConfig` always returns the stable config: it does not resolve
+[rollout stages](./production/rollouts.mdx). Subscribers that need to observe a
+rollout should use `SubscribeForConfig`.
