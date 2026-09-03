@@ -1,6 +1,17 @@
 # Dependencies
 /node_modules
 
+# Yarn Berry. install-state.gz is a local install cache that is rewritten on
+# every `yarn install`, so committing it churns ~1.8MB of binary per install.
+# https://yarnpkg.com/getting-started/qa#which-files-should-be-gitignored
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+
 # Production
 /build
 
