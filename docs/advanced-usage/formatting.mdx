@@ -1,0 +1,60 @@
+---
+id: formatting
+title: Formatting Starlark Sources
+sidebar_position: 6
+---
+
+# Formatting Starlark Sources
+
+:::info New in v0.2.0
+:::
+
+`protoconf fmt` formats protoconf's Starlark sources the way `gofmt` formats
+Go — one canonical layout, no configuration, no debate in code review.
+
+It handles every Starlark extension protoconf uses:
+
+- `.pconf` — configuration files
+- `.mpconf` — multi-output configuration files
+- `.pinc` — shared includes
+- `.proto-validator` — validation rules
+- `.star` — plain Starlark
+
+## Usage
+
+```bash
+# Print the formatted result of any file that is not already formatted,
+# without changing anything on disk
+protoconf fmt
+
+# Rewrite files in place
+protoconf fmt -w .
+
+# Show what would change
+protoconf fmt -d .
+
+# List only the files that are not formatted — useful in CI
+protoconf fmt -l .
+```
+
+With no path arguments, `protoconf fmt` walks the current directory
+recursively. You can also pass individual files or directories:
+
+```bash
+protoconf fmt -w src/myproject/server_config.pconf src/shared/
+```
+
+## In continuous integration
+
+`-l` prints the files whose formatting differs and is the check to run in CI:
+
+```yaml title=.github/workflows/protoconf.yml
+- name: Check formatting
+  run: |
+    unformatted="$(protoconf fmt -l .)"
+    if [ -n "$unformatted" ]; then
+      echo "These files need 'protoconf fmt -w':"
+      echo "$unformatted"
+      exit 1
+    fi
+```

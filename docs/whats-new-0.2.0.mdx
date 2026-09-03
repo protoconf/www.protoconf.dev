@@ -1,0 +1,141 @@
+---
+id: whats-new-0.2.0
+title: What's New in v0.2.0
+sidebar_position: 2
+---
+
+# What's New in v0.2.0
+
+v0.2.0 is the first feature release since v0.1.7. It adds remote proto modules,
+staged config rollouts, a Kubernetes ConfigMaps backend, a one-shot `GetConfig`
+RPC that is also reachable over plain HTTP, opt-in OpenTelemetry, a formatter,
+and a consistent configuration story across every CLI component.
+
+## Highlights
+
+### Remote proto modules
+
+Configuration repositories can now depend on `.proto` and Starlark files that
+live in other repositories. Dependencies are declared in a `CONFIGSPACE` file,
+pinned in `protoconf.lock`, and downloaded into `.protoconf_cache/` by
+`protoconf mod`:
+
+```bash
+protoconf mod tidy
+```
+
+See [Remote Modules](./advanced-usage/modules.mdx).
+
+### Staged rollouts
+
+A config can now carry a rollout plan. `ConfigRollout` wraps a message with an
+ordered list of stages, each targeting a named channel or a percentage of
+agents, with its own cooldown and expiration. `protoconf insert` walks the
+stages, and agents started with `-enable-rollout` pick the first stage they
+match.
+
+See [Staged Rollouts](./production/rollouts.mdx).
+
+### Kubernetes ConfigMaps backend
+
+`configmaps` joins `consul`, `etcd` and `zookeeper` as a key-value backend for
+both the agent and the inserter, so a cluster can distribute protoconf configs
+without running a separate KV store.
+
+See [Running on Kubernetes](./production/kubernetes.mdx).
+
+### One-shot `GetConfig`, over gRPC and plain HTTP
+
+`ProtoconfService` gained a unary `GetConfig` RPC alongside the streaming
+`SubscribeForConfig`, for callers that want to read a config once — a job, a
+script, an init container. The agent also transcodes it to a plain HTTP `GET`:
+
+```bash
+curl http://localhost:4380/v1/config/myproject/server_config
+```
+
+See [Consuming Configuration Updates](./consume-config-updates.mdx).
+
+### Standard protobuf validation
+
+Configs are now checked against [protovalidate](https://github.com/bufbuild/protovalidate)
+constraints declared in the `.proto` file itself, in addition to the Starlark
+`-validator` files that already existed.
+
+See [Configuration Validation](./validation.mdx).
+
+### `protoconf fmt`
+
+A formatter for Starlark sources — `.pconf`, `.mpconf`, `.pinc`,
+`.proto-validator` and `.star`:
+
+```bash
+protoconf fmt -w .
+```
+
+See [Formatting Starlark Sources](./advanced-usage/formatting.mdx).
+
+### Opt-in OpenTelemetry, always-on Prometheus
+
+The agent and the mutation server can export traces and metrics over OTLP/gRPC
+with `-enable-otel`. Prometheus metrics remain available on the agent's admin
+HTTP listener at `/metrics`, with no flag required.
+
+See [Observability](./production/observability.mdx).
+
+### Consistent CLI configuration
+
+Every component (`agent`, `serve`, `compile`, `insert`, `mutate`) now resolves
+its configuration the same way:
+
+```
+flags > environment variables > config file > proto defaults
+```
+
+See the [CLI Configuration Reference](./cli-reference.mdx).
+
+### Smaller additions
+
+- `.as_json()` on Starlark proto messages, for embedding a rendered config into
+  another field.
+- Starlark backtraces on compile errors, instead of a single-line message.
+- `protoconf devserver` — agent, compiler service and mutation server in one
+  process, with a gRPC web UI.
+- Structured logging via Go's `log/slog`, with `-log-level`, `-log-as-json` and
+  `-log-source` on the agent.
+
+## Upgrading from v0.1.7
+
+Most repositories upgrade by replacing the binary. Two behaviors changed.
+
+### Configuration precedence
+
+`protoconf agent` previously let a `-config-file` value override
+`PROTOCONF_AGENT_*` environment variables. It no longer does — environment
+variables now win over config files on every component, and flags win over
+both.
+
+If you relied on a config file overriding an environment variable, move the
+value you want to win onto the command line or into the environment, or drop
+the now-lower-priority duplicate from the config file.
+
+With repeated `-config-file` flags, the **later** file now wins for message
+fields (`-tls-config`, `-store-tls`) and repeated string fields
+(`-store-address`), where the first file's value used to persist. Check any
+invocation that passes more than one config file with different TLS material:
+
+```bash
+# v0.1.7: base.json's certificate, key and CA were used.
+# v0.2.0: override.json's are used.
+protoconf agent -config-file base.json -config-file override.json
+```
+
+### Telemetry is off by default
+
+OpenTelemetry export is now opt-in. An agent or mutation server that used to
+reach an OTLP collector automatically will no longer contact one until you pass
+`-enable-otel` (or set `PROTOCONF_AGENT_ENABLE_OTEL=true` /
+`PROTOCONF_SERVER_ENABLE_OTEL=true`). Prometheus metrics are unaffected.
+
+The full changelog is on the
+[release page](https://github.com/protoconf/protoconf/releases/tag/v0.2.0).

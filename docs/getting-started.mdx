@@ -1,7 +1,7 @@
 ---
 id: getting-started
 title: Getting Started
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # Getting Started
@@ -16,7 +16,23 @@ protoconf can be installed via Homebrew on macOS:
 brew install protoconf/tap/protoconf
 ```
 
-For other platforms, download the latest release from the [protoconf GitHub repository](https://github.com/protoconf/protoconf) and add the binary to your `PATH`.
+Container images are published to Docker Hub and the GitHub Container Registry:
+
+```bash
+docker pull protoconf/protoconf:v0.2.0
+docker pull ghcr.io/protoconf/protoconf:v0.2.0
+```
+
+For other platforms, download the latest release from the
+[protoconf GitHub repository](https://github.com/protoconf/protoconf/releases)
+and add the binary to your `PATH`. Linux and macOS builds are available for both
+`amd64` and `arm64`.
+
+Check what you got:
+
+```bash
+protoconf --help
+```
 
 ## Defining the Configuration Structure
 
@@ -26,6 +42,8 @@ First, you'll need to define your configuration structure using Protobuf. The Pr
 syntax = "proto3";
 
 package myproject.v1;
+
+import "google/protobuf/duration.proto";
 
 message ServerConfiguration {
   bool is_debug = 1;
@@ -64,8 +82,43 @@ Finally, run the protoconf compiler to generate the final configuration:
 protoconf compile .
 ```
 
-The compiled configuration will be stored in a JSON file under `./materialized_configs/<projectname>/<filename>.materialized_JSON`. For example, `./materialized_configs/myproject/server_config.materialized_JSON`.
+The compiled configuration will be stored in a JSON file under `./materialized_config/<projectname>/<filename>.materialized_JSON`. For example, `./materialized_config/myproject/server_config.materialized_JSON`.
 
 This JSON file contains the final, compiled configuration that your application can consume.
 
-With this, you've created your first protoconf configuration! The next section will cover more advanced topics, such as configuration validation and how to consume configuration updates in different programming languages.
+## Formatting
+
+`protoconf fmt` keeps Starlark sources in one canonical layout, the way `gofmt`
+does for Go:
+
+```bash
+protoconf fmt -w .
+```
+
+See [Formatting Starlark Sources](./advanced-usage/formatting.mdx).
+
+## Iterating locally
+
+`protoconf devserver` runs the agent, the compiler service and the mutation
+server together against a local protoconf directory, with a gRPC web UI on
+`http://localhost:4300`:
+
+```bash
+protoconf devserver .
+```
+
+If you only need an agent that serves what you just compiled, run it in
+development mode instead:
+
+```bash
+protoconf agent -dev .
+```
+
+## Next steps
+
+With this, you've created your first protoconf configuration. From here:
+
+- [Configuration Validation](./validation.mdx) — reject bad values at compile time
+- [Consuming Configuration Updates](./consume-config-updates.mdx) — subscribe from Go, Python, Node.js, Rust or Java
+- [Remote Modules](./advanced-usage/modules.mdx) — depend on schemas owned by another repository
+- [Running in Production](./production/production-architecture.mdx) — key-value stores, rollouts and observability
