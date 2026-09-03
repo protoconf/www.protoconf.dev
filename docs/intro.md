@@ -17,3 +17,9 @@ In protoconf, configuration is defined as Protobuf messages. The configuration l
 protoconf also supports versioning and validation. This means you can have different versions of configuration for different versions of your service and validate your configuration against specific rules. This makes configuration management more flexible and reliable.
 
 The following sections will guide you through installing protoconf, creating your first protoconf configuration, and advanced topics like validation and consuming configuration updates.
+
+:::tip Upgrading from v0.1.7?
+v0.2.0 adds remote modules, staged rollouts, a Kubernetes ConfigMaps backend and
+one-shot config reads, and changes how CLI configuration precedence works. See
+[What's New in v0.2.0](./whats-new-0.2.0.mdx).
+:::

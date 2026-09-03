@@ -1,0 +1,118 @@
+---
+slug: protoconf-0-2-0
+title: Protoconf v0.2.0
+authors: [smintz]
+tags: [protoconf, release]
+---
+
+Protoconf v0.2.0 is out — the first feature release since v0.1.7. It brings
+remote proto modules, staged rollouts, a Kubernetes ConfigMaps backend, one-shot
+config reads over gRPC and plain HTTP, opt-in OpenTelemetry, a formatter, and a
+single consistent configuration story across every command.
+
+{/* truncate */}
+
+## Remote modules
+
+Configuration repositories can now depend on protos and Starlark that live
+somewhere else. Declare the dependency in a `CONFIGSPACE` file, pin it to a tag,
+branch, commit or checksum, and let `protoconf mod tidy` resolve it into
+`protoconf.lock` and a local cache:
+
+```python title=CONFIGSPACE
+platform_protos = remote_repo(
+    url = "github.com/acme/platform-protos",
+    tag = "v1.4.0",
+)
+```
+
+```python title=./src/myproject/server_config.pconf
+load("@platform_protos//platform/v1/service.proto", "Service")
+```
+
+The lock file is what makes a compile reproducible — commit it next to your
+configs. [Remote Modules →](/docs/0.2.0/advanced-usage/modules)
+
+## Staged rollouts
+
+A configuration change is a deploy, and v0.2.0 lets you treat it like one. Wrap
+a config in a `ConfigRollout` and it reaches a canary channel first, then a
+percentage of your fleet, with a cooldown between each stage:
+
+```python
+def main():
+    return ConfigRollout(
+        value = ServerConfiguration(max_connections = 2000),
+        default_cooldown_time = Duration(seconds = 300),
+        stages = [
+            RolloutStage(channel = "canary"),
+            RolloutStage(percentile = 10),
+            RolloutStage(percentile = 50),
+        ],
+    )
+```
+
+Agents started with `-enable-rollout` pick the first stage they match, hashing
+their own identity so the same host lands in the same bucket every time.
+Interrupting `protoconf insert` mid-rollout clears the plan and returns every
+agent to the stable config. [Staged Rollouts →](/docs/0.2.0/production/rollouts)
+
+## Kubernetes ConfigMaps
+
+`configmaps` is a new key-value backend for both the agent and the inserter, so
+a cluster can distribute protoconf configs without running Consul, etcd or
+ZooKeeper alongside it:
+
+```bash
+protoconf agent -store configmaps -namespace protoconf
+```
+
+[Running on Kubernetes →](/docs/0.2.0/production/kubernetes)
+
+## One-shot reads, including over HTTP
+
+Not every consumer is a long-running service. `GetConfig` is the unary
+counterpart to `SubscribeForConfig`, for jobs, scripts and init containers. The
+agent also transcodes it onto its admin HTTP listener, so anything that can make
+an HTTP request can read a config:
+
+```bash
+curl http://localhost:4380/v1/config/myproject/server_config
+```
+
+[Consuming Configuration Updates →](/docs/0.2.0/consume-config-updates#one-shot-reads)
+
+## Telemetry you opt into
+
+OpenTelemetry export is now off by default and enabled with `-enable-otel`. An
+agent that is not asked to export traces installs no-op providers and contacts
+nothing. Prometheus metrics stay where they were, on `/metrics`, no flag
+required. [Observability →](/docs/0.2.0/production/observability)
+
+## `protoconf fmt`
+
+One canonical layout for `.pconf`, `.mpconf`, `.pinc`, `.proto-validator` and
+`.star` files, and a `-l` mode to fail CI when something is unformatted:
+
+```bash
+protoconf fmt -w .
+```
+
+[Formatting →](/docs/0.2.0/advanced-usage/formatting)
+
+## Two things to check when upgrading
+
+**Configuration precedence.** Every command now resolves configuration as
+`flags > environment variables > config file > proto defaults`. `protoconf
+agent` used to let a config file override `PROTOCONF_AGENT_*` environment
+variables; it no longer does. With repeated `-config-file` flags, the later file
+now wins.
+
+**Telemetry is off by default.** An agent that used to reach your collector
+automatically needs `-enable-otel` now.
+
+The full list is in
+[What's New in v0.2.0](/docs/0.2.0/whats-new-0.2.0), and the complete changelog
+is on the [release page](https://github.com/protoconf/protoconf/releases/tag/v0.2.0).
+
+As always, we're on [Discord](https://discord.protoconf.sh) if you hit anything.

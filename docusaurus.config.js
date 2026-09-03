@@ -53,9 +53,14 @@ const config = {
           lastVersion: 'current',
           versions: {
             current: {
+              label: 'v0.2.0',
+              path: '0.2.0',
+            },
+            '0.1.7': {
               label: 'v0.1.7',
               path: '0.1.7',
-            }
+              banner: 'unmaintained',
+            },
           }
         },
         blog: {
@@ -148,7 +153,7 @@ const config = {
             items: [
               {
                 label: 'Tutorial',
-                to: 'docs/0.1.7/intro',
+                to: '/docs/0.2.0/intro',
               },
             ],
           },

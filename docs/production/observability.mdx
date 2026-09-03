@@ -1,0 +1,106 @@
+---
+id: observability
+title: Observability
+sidebar_position: 5
+---
+
+# Observability
+
+The protoconf agent exposes Prometheus metrics out of the box and can export
+OpenTelemetry traces and metrics to a collector when you ask it to.
+
+## Prometheus metrics
+
+The agent's admin HTTP listener serves `/metrics` in Prometheus exposition
+format. It defaults to `:4380`:
+
+```bash
+protoconf agent -store etcd -store-address etcd:2379 -http-address :4380
+curl http://localhost:4380/metrics
+```
+
+The same listener serves `/debug/pprof` for profiling, and the
+[`GET /v1/config/...`](../consume-config-updates.mdx#one-shot-reads) endpoint.
+
+:::caution
+The admin listener is unauthenticated and not encrypted. Bind it to an
+interface your applications and scrape targets can reach, and not to the public
+internet.
+:::
+
+Alongside the standard gRPC server metrics, the agent reports:
+
+| Metric | Description |
+| --- | --- |
+| `protoconf_agent_config_version` | The applied config version, labelled with the config path, rollout stage, commit and author |
+| `protoconf_agent_time_since_last_update` | Milliseconds since the last config update was delivered |
+| `protoconf_agent_apply_timestamp` | Timestamp of the last applied update |
+| `protoconf_agent_config_reloads` | Number of config reloads |
+| `protoconf_agent_time_since_last_insertion` | Milliseconds since the last insertion seen for the config |
+| `protoconf_agent_version_stage_inflight` | Whether the agent is currently locked to a rollout stage |
+
+`protoconf_agent_config_version` is the one to watch during a
+[staged rollout](./rollouts.mdx): its `stage` and `commit` labels tell you
+exactly which slice of your fleet is running which change.
+
+## OpenTelemetry
+
+:::info Changed in v0.2.0
+Telemetry export is now **opt-in**. Earlier versions tried to reach an OTLP
+collector unconditionally.
+:::
+
+Pass `-enable-otel` to export traces and metrics over OTLP/gRPC:
+
+```bash
+protoconf agent -enable-otel -store etcd -store-address etcd:2379
+protoconf serve -enable-otel
+```
+
+Or through the environment:
+
+```bash
+export PROTOCONF_AGENT_ENABLE_OTEL=true
+export PROTOCONF_SERVER_ENABLE_OTEL=true
+```
+
+The exporter is configured with the standard OpenTelemetry environment
+variables, so the collector endpoint is set the usual way:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+export OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production
+```
+
+Without `-enable-otel` the agent installs no-op providers: no collector is
+contacted and no exporter goroutines run. If telemetry is enabled but the
+collector is unreachable at startup, the agent logs a warning, installs the
+no-op providers and keeps serving configs — telemetry never takes the agent
+down.
+
+When telemetry is on, the agent emits the spans you would want in an incident:
+`SubscribeForConfig` and `GetConfig` for the RPCs, and
+`protoconf.agent.WatchConfigChanges`, `protoconf.agent.ConfigUpdate`,
+`protoconf.agent.WatchRolloutConfig`, `protoconf.agent.RolloutConfigUpdate`,
+`protoconf.agent.SendConfigUpdate` and `protoconf.agent.LockUntilDeadline` for
+the work behind them. Key-value store operations are instrumented too.
+
+## Logging
+
+The agent logs through Go's structured `log/slog`, and trace context is
+attached to every record when telemetry is enabled, so logs and traces line up.
+
+```bash
+# JSON logs at debug level, with source locations
+protoconf agent -log-as-json -log-level DEBUG -log-source
+```
+
+| Flag | Values | Default |
+| --- | --- | --- |
+| `-log-level` | `DEBUG`, `INFO`, `WARN`, `ERROR` | `INFO` |
+| `-log-as-json` | boolean | `false` |
+| `-log-source` | boolean | `false` |
+
+An agent running a [rollout](./rollouts.mdx) adds its channel name and agent id
+to every log record, so a canary's logs are distinguishable from the rest of
+the fleet's without extra configuration.

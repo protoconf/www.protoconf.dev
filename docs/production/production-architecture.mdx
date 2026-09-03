@@ -24,10 +24,13 @@ flowchart TB
 
 2. **protoconf insert:** This is a command that is run in response to events from the SCM. It takes the configuration files and inserts them into the key-value store. This command can be triggered manually, or automatically via webhooks or CI/CD pipelines.
 
-3. **Key-Value Store (Consul/Etcd/Zookeeper):** This is the centralized store where all the configurations are stored. The key-value store ensures high availability and distributed access to the configurations.
+3. **Key-Value Store (Consul/etcd/ZooKeeper/Kubernetes ConfigMaps):** This is the centralized store where all the configurations are stored. The key-value store ensures high availability and distributed access to the configurations. On Kubernetes, protoconf can use [ConfigMaps](./kubernetes.mdx) directly instead of running a separate store.
 
 4. **protoconf agent:** This is a service that listens for changes in the key-value store. When a configuration is inserted or updated, the protoconf agent picks up the change and prepares to distribute it.
 
-5. **Applications:** These are your actual applications that need the configurations. They connect to the protoconf agent and receive real-time configuration updates via gRPC.
+5. **Applications:** These are your actual applications that need the configurations. They connect to the protoconf agent and receive real-time configuration updates via gRPC, or read a single value with `GetConfig` over gRPC or plain HTTP.
+
+Between step 2 and step 4, a configuration can be released gradually rather
+than all at once: see [Staged Rollouts](./rollouts.mdx).
 
 This architecture allows for rapid response to configuration changes, ensuring that your applications always have the most up-to-date configurations. This is particularly useful in a microservices architecture where multiple services need to stay in sync with their configurations.

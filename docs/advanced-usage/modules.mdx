@@ -1,0 +1,112 @@
+---
+id: modules
+title: Remote Modules
+sidebar_position: 5
+---
+
+# Remote Modules
+
+:::info New in v0.2.0
+:::
+
+A configuration repository rarely owns every schema it needs. Remote modules
+let a protoconf repository depend on `.proto` and Starlark files that live in
+another repository or archive, pinned to an exact revision and cached locally —
+the same shape as Go modules or Bazel external repositories.
+
+## Declaring dependencies
+
+Dependencies are declared in a file named `CONFIGSPACE` at the root of your
+protoconf directory. It is a Starlark file with one builtin, `remote_repo`:
+
+```python title=CONFIGSPACE
+platform_protos = remote_repo(
+    url = "github.com/acme/platform-protos",
+    tag = "v1.4.0",
+)
+
+vizceral_repo = remote_repo(
+    label = "vizceral_repo",
+    url = "./internal/vizceral.tgz",
+    checksum = "896b13d56bd1787089ca5767656c7ef1",
+)
+```
+
+Each `remote_repo` accepts:
+
+| Argument | Description |
+| --- | --- |
+| `url` | Where to fetch from — a Git repository, an archive URL, or a local path |
+| `tag` / `branch` / `commit` / `checksum` | How the dependency is pinned. Provide exactly one |
+| `label` | The name used to reference the module. Derived from the URL when omitted |
+| `source_path` | Directory inside the repository holding the protos. Defaults to `src` |
+| `additional_proto_dirs` | Extra directories to add to the proto import path |
+| `exclude_file_regexps` | Patterns for files to skip |
+
+Pinning is not optional in practice: a `remote_repo` with no `tag`, `branch`,
+`commit` or `checksum` resolves against a moving target, and protoconf prints a
+warning telling you so.
+
+## Resolving and downloading
+
+`protoconf mod` turns `CONFIGSPACE` into a lock file and a local cache:
+
+```bash
+# Resolve CONFIGSPACE into protoconf.lock
+protoconf mod init
+
+# Download everything protoconf.lock pins into .protoconf_cache/
+protoconf mod sync
+
+# Both, in one step — the usual command
+protoconf mod tidy
+```
+
+`protoconf.lock` records the resolved fetch URL and content hashes for every
+dependency, including transitive ones:
+
+```json title=protoconf.lock
+{
+  "url": ".",
+  "deps": {
+    "vizceral_repo": {
+      "label": "vizceral_repo",
+      "url": "./internal/vizceral.tgz",
+      "checksum": "896b13d56bd1787089ca5767656c7ef1",
+      "sourcePath": "src",
+      "fileDescriptorSetSum": "039f1e1023250b34054894cc58bc8b2b"
+    }
+  }
+}
+```
+
+Commit `protoconf.lock` alongside your configs — it is what makes a compile
+reproducible. The `.protoconf_cache/` directory is derived and belongs in
+`.gitignore`.
+
+## Loading from a module
+
+Inside a `.pconf`, `.mpconf` or `.pinc` file, reference a module with
+`@<label>//<path>`:
+
+```python title=./src/myproject/server_config.pconf
+load("@platform_protos//platform/v1/service.proto", "Service")
+load("@platform_protos//platform/v1/defaults.pinc", "default_limits")
+
+def main():
+    return Service(
+        name = "myproject",
+        limits = default_limits(),
+    )
+```
+
+Loads inside a module file are resolved relative to that module, so a module's
+own internal `load()` calls keep working without your repository knowing
+anything about its layout.
+
+## Integrity
+
+`protoconf mod sync` verifies each cached module against the hashes in
+`protoconf.lock` and re-downloads anything that does not match. Changing a
+dependency's URL clears its recorded integrity hash, so a moved dependency is
+re-verified rather than silently trusted.

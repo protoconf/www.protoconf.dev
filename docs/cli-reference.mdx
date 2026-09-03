@@ -1,0 +1,208 @@
+---
+id: cli-reference
+title: CLI Configuration Reference
+sidebar_position: 8
+---
+
+# CLI Configuration Reference
+
+Every protoconf component is configured from a protobuf message, which means
+the same setting is always available three ways: as a command-line flag, as an
+environment variable, and as a field in a configuration file.
+
+## Precedence
+
+Since v0.2.0 all five components — `agent`, `serve`, `compile`, `insert` and
+`mutate` — resolve their configuration in the same order:
+
+```
+flags > environment variables > config file > proto defaults
+```
+
+A flag beats everything. An environment variable beats a config file. A config
+file only fills in what nothing else set.
+
+:::caution Changed in v0.2.0
+In v0.1.7, `protoconf agent` let a `-config-file` value override
+`PROTOCONF_AGENT_*` environment variables. It no longer does. See
+[Upgrading from v0.1.7](./whats-new-0.2.0.mdx#upgrading-from-v017).
+:::
+
+## Config files
+
+Pass a config file with `-config-file`. The agent accepts JSON, Jsonnet, YAML
+and binary protobuf; the other components accept JSON, YAML and binary
+protobuf. Keys are the flag names:
+
+```json title=agent.json
+{
+  "grpc-address": "0.0.0.0:4300",
+  "http-address": "0.0.0.0:4380",
+  "store": "etcd",
+  "store-address": ["etcd-0:2379", "etcd-1:2379"],
+  "prefix": "protoconf",
+  "log-level": "INFO"
+}
+```
+
+```bash
+protoconf agent -config-file agent.json
+```
+
+`-config-file` can be repeated. Later files win over earlier ones — including
+for message-typed fields such as `tls-config` and `store-tls`, and for repeated
+fields such as `store-address`.
+
+```bash
+# override.json's TLS material wins.
+protoconf agent -config-file base.json -config-file override.json
+```
+
+## Environment variables
+
+Each component reads its own prefix:
+
+| Command | Prefix |
+| --- | --- |
+| `protoconf agent` | `PROTOCONF_AGENT_` |
+| `protoconf serve` | `PROTOCONF_SERVER_` |
+| `protoconf compile` | `PROTOCONF_COMPILER_` |
+| `protoconf insert` | `PROTOCONF_INSERTER_` |
+| `protoconf mutate` | `PROTOCONF_MUTATE_` |
+| `protoconf mod` | `PROTOCONF_MOD_` |
+
+The rest of the name comes from the underlying protobuf **field** name,
+uppercased. That is usually the same as the flag name with dashes turned into
+underscores, but not always — `protoconf agent -dev` is
+`PROTOCONF_AGENT_DEV_ROOT`, for instance. The tables below list both spellings
+side by side, so you never have to guess.
+
+## `protoconf agent`
+
+Serves configs from a key-value store to subscribers over gRPC.
+
+```bash
+protoconf agent -store etcd -store-address etcd:2379 -prefix myproject
+```
+
+| Flag | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `-grpc-address` | `PROTOCONF_AGENT_GRPC_ADDRESS` | `:4300` | Address to bind the gRPC listener |
+| `-http-address` | `PROTOCONF_AGENT_HTTP_ADDRESS` | `:4380` | Address to bind the admin HTTP listener (`/metrics`, `/debug/pprof`, `/v1/config/...`) |
+| `-dev` | `PROTOCONF_AGENT_DEV_ROOT` | | Development mode: watch a local protoconf directory instead of a key-value store |
+| `-store` | `PROTOCONF_AGENT_STORE` | `consul` | `consul`, `etcd`, `zookeeper`, `file` or `configmaps` |
+| `-store-address` | `PROTOCONF_AGENT_SERVERS` | per store | Key-value store addresses (repeatable) |
+| `-prefix` | `PROTOCONF_AGENT_PREFIX` | | Key prefix inside the store |
+| `-namespace` | `PROTOCONF_AGENT_NAMESPACE` | | Kubernetes namespace, for the `configmaps` store |
+| `-insecure` | `PROTOCONF_AGENT_INSECURE` | `false` | Skip the gRPC server TLS configuration |
+| `-tls-config-cert-file`, `-tls-config-key-file`, `-tls-config-ca-file` | | | TLS material for the gRPC server (`-tls-config-cert-text` and friends take the material inline) |
+| `-store-tls-cert-file`, `-store-tls-key-file`, `-store-tls-ca-file` | | | TLS material for the connection to the store |
+| `-enable-rollout` | `PROTOCONF_AGENT_ENABLE_ROLLOUT` | `false` | Resolve staged rollouts (see [Staged Rollouts](./production/rollouts.mdx)) |
+| `-channelName` | `PROTOCONF_AGENT_CHANNEL_NAME` | | Rollout channel this agent belongs to |
+| `-enable-otel` | `PROTOCONF_AGENT_ENABLE_OTEL` | `false` | Export traces and metrics over OTLP/gRPC |
+| `-log-level` | `PROTOCONF_AGENT_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN` or `ERROR` |
+| `-log-as-json` | `PROTOCONF_AGENT_LOG_AS_JSON` | `false` | Emit logs as JSON |
+| `-log-source` | `PROTOCONF_AGENT_LOG_SOURCE` | `false` | Include the source location in logs |
+
+When `-enable-rollout` is set, the agent identifies itself by its hostname;
+that identity is what percentile-based rollout stages hash on.
+
+## `protoconf serve`
+
+Runs the mutation server.
+
+| Flag | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `-grpc-address` | `PROTOCONF_SERVER_GRPC_ADDRESS` | `:4301` | Address to bind the gRPC listener |
+| `-pre` | `PROTOCONF_SERVER_PRE_MUTATION_SCRIPT` | | Pre-mutation script |
+| `-post` | `PROTOCONF_SERVER_POST_MUTATION_SCRIPT` | | Post-mutation script |
+| `-tls-cert` | `PROTOCONF_SERVER_TLS_CERT` | | TLS certificate file |
+| `-tls-key` | `PROTOCONF_SERVER_TLS_KEY` | | TLS key file |
+| `-tls-ca` | `PROTOCONF_SERVER_TLS_CA` | | CA file; setting it enables client certificate verification |
+| `-auth-token` | `PROTOCONF_SERVER_AUTH_TOKEN` | | Bearer token required from mutation clients; auth is disabled when empty |
+| `-enable-otel` | `PROTOCONF_SERVER_ENABLE_OTEL` | `false` | Export traces and metrics over OTLP/gRPC |
+
+## `protoconf compile`
+
+Compiles Starlark configs into materialized protobuf.
+
+```bash
+protoconf compile . myproject/server_config
+```
+
+| Flag | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `-V` | `PROTOCONF_COMPILER_VERBOSE_LOGGING` | `false` | Verbose logging |
+| `-repl` | `PROTOCONF_COMPILER_REPL` | `false` | Interactive REPL |
+| `-process-templates` | `PROTOCONF_COMPILER_PROCESS_TEMPLATES` | `false` | Process `.template` files before compiling |
+| `-compiler-address` | `PROTOCONF_COMPILER_COMPILER_ADDRESS` | | Compile through a remote compiler service instead of locally |
+| `-cpuprofile` | `PROTOCONF_COMPILER_CPUPROFILE` | | Write CPU profiling output to a file |
+| `-memprofile` | `PROTOCONF_COMPILER_MEMPROFILE` | | Write memory profiling output to a file |
+
+## `protoconf insert`
+
+Writes materialized configs into a key-value store.
+
+| Flag | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `-store` | `PROTOCONF_INSERTER_STORE` | `consul` | `consul`, `etcd`, `zookeeper` or `configmaps` |
+| `-store-address` | `PROTOCONF_INSERTER_STORE_ADDRESS` | per store | Key-value store addresses (repeatable) |
+| `-prefix` | `PROTOCONF_INSERTER_PREFIX` | | Key prefix inside the store |
+| `-namespace` | `PROTOCONF_INSERTER_NAMESPACE` | | Kubernetes namespace, for the `configmaps` store |
+| `-d` | `PROTOCONF_INSERTER_DELETE` | `false` | Delete the given configs instead of inserting them |
+
+## `protoconf mutate`
+
+Sends a mutation to the mutation server.
+
+| Flag | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `-root` | `PROTOCONF_MUTATE_PROTOCONF_ROOT` | `./src` | Root of the protoconf sources |
+| `-proto` | `PROTOCONF_MUTATE_PROTO_FILE` | | Path to the proto file |
+| `-msg` | `PROTOCONF_MUTATE_PROTO_MSG` | | Message name inside the proto file |
+| `-addr` | `PROTOCONF_MUTATE_SERVER_ADDRESS` | `localhost:4301` | Mutation server address |
+| `-path` | `PROTOCONF_MUTATE_CONFIG_PATH` | | Path to write the config to |
+| `-field` | `PROTOCONF_MUTATE_FIELDS` | | `key=value` field to set (repeatable) |
+| `-metadata` | `PROTOCONF_MUTATE_METADATA_STR` | | Metadata string passed to the pre/post scripts |
+| `-tls-cert` | `PROTOCONF_MUTATE_TLS_CERT` | | Client TLS certificate file |
+| `-tls-key` | `PROTOCONF_MUTATE_TLS_KEY` | | Client TLS key file |
+| `-tls-ca` | `PROTOCONF_MUTATE_TLS_CA` | | CA file used to verify the server |
+| `-insecure` | `PROTOCONF_MUTATE_INSECURE_TLS` | `false` | Connect without TLS |
+
+## `protoconf mod`
+
+Manages remote proto module dependencies. See
+[Remote Modules](./advanced-usage/modules.mdx).
+
+| Command | Description |
+| --- | --- |
+| `protoconf mod init` | Resolve `CONFIGSPACE` into `protoconf.lock` |
+| `protoconf mod sync` | Download and cache everything `protoconf.lock` pins |
+| `protoconf mod tidy` | `init` followed by `sync` |
+
+| Flag | Environment variable | Default |
+| --- | --- | --- |
+| `-protoconfPath` | `PROTOCONF_MOD_PROTOCONF_PATH` | the current directory |
+| `-cacheDir` | `PROTOCONF_MOD_CACHE_DIR` | `.protoconf_cache` |
+| `-lockFile` | `PROTOCONF_MOD_LOCK_FILE` | `protoconf.lock` |
+
+## `protoconf devserver`
+
+Runs the agent, the compiler service and the mutation server in one process,
+with a gRPC web UI on `http://localhost:4300`. It takes the protoconf root as
+its only argument and is meant for local development, not production.
+
+```bash
+protoconf devserver .
+```
+
+## `protoconf fmt`
+
+Formats Starlark sources. See
+[Formatting Starlark Sources](./advanced-usage/formatting.mdx).
+
+| Flag | Description |
+| --- | --- |
+| `-w` | Write the result back to the source file instead of stdout |
+| `-d` | Print diffs instead of rewriting files |
+| `-l` | List the files whose formatting differs |
