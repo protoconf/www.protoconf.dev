@@ -1,0 +1,21 @@
+{
+  // Cloudflare Workers static-assets config for the Docusaurus build.
+  // There is no Worker script: `assets.directory` is served directly, so no
+  // `main` entrypoint is declared.
+  //
+  // The build itself is configured in the Cloudflare dashboard, not here:
+  //   Build command:  yarn build
+  //   Deploy command: npx wrangler deploy
+  "name": "www-protoconf-dev",
+  "compatibility_date": "2026-09-03",
+  "assets": {
+    "directory": "./build",
+    // docusaurus.config.js sets `trailingSlash: false`, so pages are emitted as
+    // `docs/intro.html` and served at `/docs/intro`. Cloudflare's default
+    // ("auto-trailing-slash") would also answer `/docs/intro/`; dropping the
+    // slash keeps one canonical URL per page and matches the sitemap.
+    "html_handling": "drop-trailing-slash",
+    // Serve Docusaurus's own build/404.html rather than Cloudflare's default.
+    "not_found_handling": "404-page"
+  }
+}
