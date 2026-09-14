@@ -1,0 +1,252 @@
+#!/bin/sh
+# protoconf installer.
+#
+#   curl -s https://protoconf.dev/install | sh
+#
+# Installs the protoconf CLI from the GitHub release archives published by
+# goreleaser (https://github.com/protoconf/protoconf/releases).
+#
+# Options (flags, or the matching environment variable):
+#
+#   --version <tag>   PROTOCONF_VERSION      release to install, e.g. v0.2.0
+#                                            (default: the latest release)
+#   --dir <path>      PROTOCONF_INSTALL_DIR  directory to install into
+#                                            (default: /usr/local/bin when
+#                                            writable, else ~/.local/bin)
+#                     PROTOCONF_NO_VERIFY    set to 1 to skip the checksum
+#                                            verification (not recommended)
+#
+# Pass flags through a pipe with `sh -s --`:
+#
+#   curl -s https://protoconf.dev/install | sh -s -- --version v0.2.0
+
+set -eu
+
+REPO="protoconf/protoconf"
+VERSION="${PROTOCONF_VERSION:-}"
+INSTALL_DIR="${PROTOCONF_INSTALL_DIR:-}"
+NO_VERIFY="${PROTOCONF_NO_VERIFY:-0}"
+TMPDIR_PROTOCONF=""
+
+say() {
+	printf '%s\n' "$*"
+}
+
+err() {
+	printf 'protoconf: %s\n' "$*" >&2
+	exit 1
+}
+
+have() {
+	command -v "$1" >/dev/null 2>&1
+}
+
+cleanup() {
+	if [ -n "$TMPDIR_PROTOCONF" ] && [ -d "$TMPDIR_PROTOCONF" ]; then
+		rm -rf "$TMPDIR_PROTOCONF"
+	fi
+}
+
+usage() {
+	cat <<'EOF'
+Usage: install [--version <tag>] [--dir <path>]
+
+  --version <tag>  release to install (default: the latest release)
+  --dir <path>     directory to install into (default: /usr/local/bin when
+                   writable, else ~/.local/bin)
+  --help           show this message
+EOF
+}
+
+parse_args() {
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--version)
+			[ "$#" -ge 2 ] || err "--version needs a release tag"
+			VERSION="$2"
+			shift 2
+			;;
+		--version=*)
+			VERSION="${1#--version=}"
+			shift
+			;;
+		--dir)
+			[ "$#" -ge 2 ] || err "--dir needs a path"
+			INSTALL_DIR="$2"
+			shift 2
+			;;
+		--dir=*)
+			INSTALL_DIR="${1#--dir=}"
+			shift
+			;;
+		-h | --help)
+			usage
+			exit 0
+			;;
+		*)
+			err "unknown option: $1 (try --help)"
+			;;
+		esac
+	done
+}
+
+# Downloads $1 to the file $2.
+download() {
+	if have curl; then
+		curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1" ||
+			err "failed to download $1"
+	else
+		wget -q -O "$2" "$1" || err "failed to download $1"
+	fi
+}
+
+# Prints the tag of the most recent release. Resolving GitHub's
+# /releases/latest redirect avoids the rate limit on the REST API, so it is
+# preferred when curl is available.
+latest_version() {
+	if have curl; then
+		resolved=$(curl -fsSLI --proto '=https' --tlsv1.2 \
+			-o /dev/null -w '%{url_effective}' \
+			"https://github.com/$REPO/releases/latest") ||
+			err "could not reach github.com to look up the latest release"
+		printf '%s\n' "${resolved##*/}"
+	else
+		wget -q -O - "https://api.github.com/repos/$REPO/releases/latest" |
+			sed -n 's/.*"tag_name" *: *"\([^"]*\)".*/\1/p' |
+			head -n 1
+	fi
+}
+
+detect_platform() {
+	os=$(uname -s)
+	case "$os" in
+	Linux) os="linux" ;;
+	Darwin) os="darwin" ;;
+	*) err "unsupported operating system: $os. See https://github.com/$REPO/releases for the full list of builds." ;;
+	esac
+
+	arch=$(uname -m)
+	case "$arch" in
+	x86_64 | amd64) arch="amd64" ;;
+	arm64 | aarch64) arch="arm64" ;;
+	i386 | i686) arch="386" ;;
+	*) err "unsupported architecture: $arch. See https://github.com/$REPO/releases for the full list of builds." ;;
+	esac
+
+	# The release matrix has no 32-bit macOS build.
+	if [ "$os" = "darwin" ] && [ "$arch" = "386" ]; then
+		err "unsupported platform: darwin/386"
+	fi
+
+	PLATFORM="${os}_${arch}"
+}
+
+# Verifies $1 against checksums.txt in the same directory.
+verify_checksum() {
+	if [ "$NO_VERIFY" = "1" ]; then
+		say "Skipping checksum verification (PROTOCONF_NO_VERIFY=1)"
+		return
+	fi
+
+	archive_name=$(basename "$1")
+	expected=$(awk -v name="$archive_name" '$2 == name { print $1 }' \
+		"$TMPDIR_PROTOCONF/checksums.txt")
+	[ -n "$expected" ] ||
+		err "$archive_name is not listed in checksums.txt"
+
+	if have sha256sum; then
+		actual=$(sha256sum "$1" | cut -d ' ' -f 1)
+	elif have shasum; then
+		actual=$(shasum -a 256 "$1" | cut -d ' ' -f 1)
+	elif have openssl; then
+		actual=$(openssl dgst -sha256 "$1" | awk '{ print $NF }')
+	else
+		err "no sha256 tool found (looked for sha256sum, shasum and openssl). Install one, or re-run with PROTOCONF_NO_VERIFY=1."
+	fi
+
+	[ "$actual" = "$expected" ] ||
+		err "checksum mismatch for $archive_name: expected $expected, got $actual"
+
+	say "Checksum verified"
+}
+
+# Picks the install directory and makes sure it exists and is writable.
+resolve_install_dir() {
+	if [ -z "$INSTALL_DIR" ]; then
+		if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
+			INSTALL_DIR="/usr/local/bin"
+		else
+			INSTALL_DIR="$HOME/.local/bin"
+		fi
+	fi
+
+	mkdir -p "$INSTALL_DIR" ||
+		err "could not create $INSTALL_DIR. Re-run with PROTOCONF_INSTALL_DIR set to a writable directory."
+	[ -w "$INSTALL_DIR" ] ||
+		err "$INSTALL_DIR is not writable. Re-run with PROTOCONF_INSTALL_DIR set to a writable directory, or with sudo."
+}
+
+# Warns when the install directory is not on PATH.
+check_path() {
+	case ":$PATH:" in
+	*":$INSTALL_DIR:"*) ;;
+	*)
+		say ""
+		say "$INSTALL_DIR is not on your PATH. Add it with:"
+		say ""
+		say "    export PATH=\"$INSTALL_DIR:\$PATH\""
+		say ""
+		;;
+	esac
+}
+
+main() {
+	parse_args "$@"
+
+	have curl || have wget || err "need curl or wget to download the release"
+	have tar || err "need tar to unpack the release"
+
+	detect_platform
+
+	if [ -z "$VERSION" ]; then
+		VERSION=$(latest_version)
+		[ -n "$VERSION" ] || err "could not determine the latest release"
+	fi
+	# Release archives are named after the version without the leading "v".
+	version_number="${VERSION#v}"
+
+	resolve_install_dir
+
+	TMPDIR_PROTOCONF=$(mktemp -d 2>/dev/null || mktemp -d -t protoconf)
+	trap cleanup EXIT INT TERM
+
+	archive="protoconf_${version_number}_${PLATFORM}.tar.gz"
+	base_url="https://github.com/$REPO/releases/download/$VERSION"
+
+	say "Installing protoconf $VERSION ($PLATFORM) into $INSTALL_DIR"
+
+	download "$base_url/$archive" "$TMPDIR_PROTOCONF/$archive"
+	if [ "$NO_VERIFY" != "1" ]; then
+		download "$base_url/checksums.txt" "$TMPDIR_PROTOCONF/checksums.txt"
+	fi
+	verify_checksum "$TMPDIR_PROTOCONF/$archive"
+
+	# -o keeps the extracted binary owned by the installing user rather than by
+	# whoever built the archive; both GNU tar and bsdtar read it that way.
+	tar -xzof "$TMPDIR_PROTOCONF/$archive" -C "$TMPDIR_PROTOCONF" protoconf ||
+		err "could not unpack protoconf from $archive"
+
+	chmod 0755 "$TMPDIR_PROTOCONF/protoconf"
+	# mv keeps the replacement atomic when the target already exists and is
+	# running; a plain cp would write into the open binary.
+	mv -f "$TMPDIR_PROTOCONF/protoconf" "$INSTALL_DIR/protoconf" ||
+		err "could not install into $INSTALL_DIR"
+
+	# The CLI framework prints --version on stderr, hence the 2>&1.
+	installed=$("$INSTALL_DIR/protoconf" --version 2>&1 || true)
+	say "Installed ${installed:-protoconf $VERSION}"
+	check_path
+	say "Run 'protoconf --help' to get started, or read https://www.protoconf.dev/docs/0.2.0/getting-started"
+}
+
+main "$@"

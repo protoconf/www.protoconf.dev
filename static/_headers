@@ -1,0 +1,10 @@
+# Cloudflare Workers static-assets headers (see wrangler.jsonc). Ignored by any
+# host that does not read a `_headers` file, which only costs the headers below.
+
+# `static/install` has no extension, so it would otherwise be served as a
+# download rather than shown in a browser. The short max-age keeps
+# `curl -s https://protoconf.dev/install | sh` close to the latest release
+# without asking the edge to revalidate on every install.
+/install
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=300
