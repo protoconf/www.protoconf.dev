@@ -1,105 +1,245 @@
 # Protoconf for Platform Engineering
 
-One of the challenges of platform engineering is coordinating between different stakeholders, each with their own concerns and requirements. Protoconf can help streamline this process by serving as a single source of truth that all stakeholders can agree upon.
+One of the challenges of platform engineering is coordinating between different
+stakeholders, each with their own concerns and requirements. Protoconf can help
+streamline this process by serving as a single source of truth that all
+stakeholders can agree upon.
 
-## Contract Definition
+:::tip Reference implementation
+[smintz/platform-engineering](https://github.com/smintz/platform-engineering) is
+a working platform built this way: a platform core, drivers for Kubernetes, ECS,
+Terraform state, Grafana and GitHub Actions, a reference workspace with golden
+output, and an example that runs the OpenTelemetry demo's 20 services on a local
+cluster with generated dashboards and alert rules. Everything below links into
+it — the code on this page is trimmed from files you can read and run.
+:::
 
-The first step is to define a contract in Protobuf. This contract can include information about the components and services in your production system, such as:
+## The contract
 
-- Component metadata, like its owner and its sources/packages needed to run
-- Metrics for evaluating the component's health
-- Dependencies on other components
+The artifact every stakeholder meets on is a component. A developer declares
+what a service *is* and what it *depends on*; the platform derives the rest —
+the Terraform that deploys it, the address each dependency hands it, the
+dashboards for what it promises, and the CI pipeline that applies it in order.
 
-```protobuf
+```protobuf title=src/platform/v1/platform.proto
 syntax = "proto3";
 
-package platform_engineering.v1;
+package platform.v1;
+
+import "google/protobuf/any.proto";
 
 message Component {
-    string owner = 1;
-    repeated string sources = 2;
-    repeated string metrics = 3;
-    repeated string dependencies = 4;
+  string component_id = 1;
+  string domain = 2;
+  string name = 3;
+  string description = 4;
+
+  Metadata metadata = 5;
+  // Objectives == SLOs, RTOs and RPOs of the component
+  repeated Objective objectives = 6;
+  Upstreams upstreams = 7;
+  Status status = 8;
+  // One entry per file the compiler writes: infra/main.tf.json,
+  // monitoring/main.tf.json, a service's own YAML.
+  map<string, google.protobuf.Any> configs = 9;
 }
 ```
 
-## Application of the Contract
+The `configs` map is what makes one message serve every stakeholder: each entry
+is a file, each file is a different team's output, and `google.protobuf.Any`
+means the platform core never has to know what a Terraform config or a Grafana
+dashboard looks like. See [Using protobuf's Any type](../advanced-usage/protobuf-any.mdx).
 
-With the contract defined, each stakeholder can use Protoconf to provide and consume information in ways that are relevant to their roles:
+## Composition
 
-### Software Engineers and SREs
+A component is built by running a list of hooks in order, each a function
+`f(msg, next) -> msg`. Concerns compose without knowing about each other: the
+developer's workload, the SRE's objectives and the policy team's defaults are
+all just more entries in the list.
 
-Software engineers and SREs can use Protoconf to populate the contract with data about the components they own.
+Four markers are interpreted by the component constructor rather than mutating
+the message:
+
+| Marker | What it means |
+| --- | --- |
+| `platform.WithDeps(Factory, ...)` | These components are dependencies. Each is built, attached as an upstream, and its `ForDownstream` hooks run against this component. |
+| `platform.ForDownstream(*hooks)` | Run these hooks on every component that depends on this one — how a dependency hands over its address or credentials. |
+| `platform.Inherit(*hooks)` | Apply these hooks here *and* to every dependency, transitively — ambient context such as the failure domain. |
+| `platform.Finally(*hooks)` | Run these after everything else, against the finished component — how a dashboard sees every objective, including ones dependencies contributed. |
+
+## Application of the contract
+
+With the contract defined, each stakeholder uses Protoconf to provide and
+consume information in ways relevant to their role.
+
+### Software engineers and SREs
+
+They declare the component: what it runs, what it needs, what it promises, and
+what it hands to its dependants. Nothing here names an infrastructure product.
+
+```python title=test/src/core_test.mpconf
+load("@kubernetes//kubernetes.pinc", "WithContainerEnv", "Workload")
+load("@platform//platform/platform.pinc", "platform")
+load("@terraform_state//terraform.pinc", "S3Backend", "WithState")
+
+def RedisComponent(*hooks):
+    return platform.Component(
+        "redis",
+        WithState(lambda component: Workload("redis", "redis:7-alpine", 6379), BACKEND),
+        platform.WithSLO(
+            "availability",
+            REDIS_UP % WINDOW,
+            description = "Share of scrapes where Redis accepted a connection and answered PING.",
+            min = 0.999,
+            unit = platform.Unit.UNIT_RATIO,
+            severity = platform.Status.STATUS_CRIT,
+            burn_query = REDIS_UP % BURN,
+        ),
+        # what it hands to anything that depends on it
+        platform.ForDownstream(
+            platform.WithConfig(None, WithContainerEnv("REDIS_URL", "redis://redis:6379")),
+        ),
+        *hooks
+    )
+
+def ApiTaskComponent(*hooks):
+    return platform.Component(
+        "api-task",
+        WithState(lambda component: Workload("api-task", "ghcr.io/example/api:latest", 8080), BACKEND),
+        # uninstantiated: the platform builds it, and api-task receives REDIS_URL
+        platform.WithDeps(RedisComponent),
+        *hooks
+    )
+
+def main():
+    return platform.GetConfigs(
+        ApiTaskComponent(platform.WithFailureDomain("us-east-1")).msg,
+    )
+```
+
+Adding a dependency is one line, and its consequences — the environment
+variable, the apply order, the dependency's alerts on this component's
+dashboard — follow without the developer naming them.
+
+### Compute infrastructure engineers
+
+Everything technology-specific lives in a driver module, and the platform core
+loads none of them. A workspace picks the drivers it uses, so moving a component
+between Kubernetes, ECS and serverless is a different driver rather than a
+change to any component.
+
+```python title=CONFIGSPACE
+platform=remote_repo(label="platform", url="git@github.com:smintz/platform-engineering.git", tag="v0.1.0")
+kubernetes=remote_repo(label="kubernetes", url="git@github.com:smintz/platform-engineering.git//drivers/runtime/kubernetes", tag="v0.1.0")
+terraform_state=remote_repo(label="terraform_state", url="git@github.com:smintz/platform-engineering.git//drivers/state/terraform", tag="v0.1.0")
+```
+
+One module per driver, so importing Grafana does not drag in ECS. See
+[Remote Modules](../advanced-usage/modules.mdx) for how `CONFIGSPACE` and
+`protoconf.lock` work.
+
+### Monitoring infrastructure engineers
+
+Objectives are declared on the component; a monitoring driver renders them. The
+component never knows dashboards exist.
 
 ```python
-load("platform_engineering.v1/component.star", "Component")
-
-Component(
-    owner="team1",
-    sources=["github.com/repo1", "github.com/repo2"],
-    metrics=["latency", "error_rate"],
-    dependencies=["component2", "component3"]
+platform.WithSLO(
+    "availability",
+    'sum(rate(http_requests_total{job="api",code!~"5.."}[28d])) / sum(rate(http_requests_total{job="api"}[28d]))',
+    description = "Share of requests answered without a 5xx",
+    min = 0.995,
+    unit = platform.Unit.UNIT_RATIO,
+    severity = platform.Status.STATUS_CRIT,
+    # the same ratio over the alert's own windows: this is what makes a burn-rate alert
+    burn_query = 'sum(rate(http_requests_total{job="api",code!~"5.."}[$__window])) / sum(rate(http_requests_total{job="api"}[$__window]))',
+)
+platform.WithDiagnostic(
+    "pod restarts",
+    'sum(increase(kube_pod_container_status_restarts_total[1h]))',
+    unit = platform.Unit.UNIT_COUNT,
 )
 ```
 
-### Compute Infrastructure Engineers
+`WithSLO` is a promise — a query, a bound, a unit and a severity. `WithDiagnostic`
+is not: it is a signal that explains a broken objective and never pages. The
+Grafana driver's `WithGrafanaDashboard(backend, datasources)` turns both into one
+dashboard per component plus its alert rules, written into that component's
+`monitoring/main.tf.json`. Swapping Grafana for something else is a new driver,
+and no component changes.
 
-Compute infrastructure engineers can use the contract to automate the application of these definitions into the compute platform. This allows a clear migration path between different infrastructure platforms like Kubernetes, ECS, and Serverless.
+### Security engineers
 
-```python
-load("kubernetes.star", "k8s")
+Cross-cutting policy has two shapes here. Repeated setup every component ends
+with is a macro returning a tuple of hooks — the one place an organisation
+applies a default:
 
-for component in components:
-    k8s.Deployment(
-        name=component.owner,
-        image=component.sources[0], # assumes sources[0] is the primary source
-        # fill in other fields as necessary
-    )
+```python title=examples/otel-demo/src/components/defaults.pinc
+# Defaults is what every component gets whether or not it asked: today, a dashboard and
+# alert rules for whatever objectives it declared. A component with none renders nothing,
+# so the data stores and the observability stack itself pay nothing for it.
+def Defaults(*hooks):
+    return (WithGrafanaDashboard(BACKEND, DATASOURCES),) + tuple(hooks)
 ```
 
-### Monitoring Infrastructure Engineers
+Policy that has to reason about the whole graph instead uses labels:
+`platform.WithLabels(tier = "cache")` records what a component is, and
+`platform.SelectComponents(root, predicate)` returns every component in a graph
+matching a predicate over them. On top of that, compile-time
+[validators](../validation.mdx) reject a component that breaks a rule before any
+Terraform is written.
 
-Monitoring infrastructure engineers can use the contract to apply the correct monitoring tools, scrape and keep relevant metrics, and generate dashboards.
+### FinOps engineers
 
-```python
-load("monitoring.star", "monitoring")
+The same two mechanisms cover cost. Tagging belongs in the defaults macro, so
+every component carries it without asking; `SelectComponents` answers which
+components exist, what they are labelled and what they depend on, which is what
+an allocation or rightsizing report needs. Because each component's
+infrastructure is its own Terraform state, cost attribution follows the same
+boundary the platform already applies along.
 
-for component in components:
-    monitoring.Dashboard(
-        name=component.owner + "_dashboard",
-        metrics=component.metrics,
-        # fill in other fields as necessary
-    )
+## Compiling and applying
+
+```bash
+protoconf mod tidy    # resolve CONFIGSPACE modules
+protoconf compile .   # write materialized_config/ and outputs/
+terraform -chdir=outputs/<entry>/<domain>/<name>/infra init
+terraform -chdir=outputs/<entry>/<domain>/<name>/infra apply
 ```
 
-### Security Engineers
+`platform.GetConfigs(root)` walks the dependency graph and returns every config
+keyed `<domain>/<name>/<config>`; the compiler writes each entry to
+`outputs/<entry point>/<key>`, choosing Terraform JSON, YAML, JSON or TOML by the
+key's extension. See [Multiple Outputs](../advanced-usage/multiple-outputs.mdx)
+and [Output Formats](../advanced-usage/output-formats.mdx).
 
-Security engineers can enforce security practices via validators, implement zero-trust networking, provide secrets services, and manage access.
-
-```python
-load("security.star", "security")
-
-for component in components:
-    security.Policy(
-        name=component.owner + "_policy",
-        owner=component.owner,
-        # fill in other fields as necessary
-    )
-```
-
-### FinOps Engineers
-
-FinOps engineers can enforce and automate correct resource tagging, adding relevant alerts, etc.
+Rather than applying states by hand, the entry point can return the pipeline too:
 
 ```python
-load("finops.star", "finops")
-
-for component in components:
-    finops.TaggingPolicy(
-        name=component.owner + "_tagging_policy",
-        owner=component.owner,
-        # fill in other fields as necessary
-    )
+outputs[".github/workflows/terraform.yaml"] = actions.TerraformPipeline(
+    configs, OUTPUT_ROOT, actions.OidcCredentials("us-east-1"))
 ```
 
-By using Protoconf in this way, each stakeholder can focus on their own concerns, while also having access to a holistic view of the system. This increases both the efficiency and the effectiveness of your platform engineering efforts.
+It plans every state on pull requests and applies on `main`, ordered by what each
+state reads from which — derived from backend keys and `terraform_remote_state`
+reads, never declared. It refuses to compile, naming the fix, when a state CI
+would apply has no remote backend, or reads one that no config produces.
+
+## Trying it
+
+```bash
+git clone https://github.com/smintz/platform-engineering
+cd platform-engineering/test
+make test                          # compile the reference stack and check the golden output
+ls outputs/core_test/us-east-1/*/  # infra/main.tf.json and monitoring/main.tf.json per component
+```
+
+For something closer to a real system,
+[`examples/otel-demo`](https://github.com/smintz/platform-engineering/tree/main/examples/otel-demo)
+runs the OpenTelemetry demo's 20 services on a local Kubernetes cluster with
+Prometheus, Grafana, SLOs and generated dashboards. Its README walks the example
+file by file, and is the best place to learn the model by reading.
+
+By using Protoconf this way, each stakeholder can focus on their own concerns
+while still having access to a holistic view of the system — and the seams
+between them are typed, compiled and checked rather than agreed in a document.
