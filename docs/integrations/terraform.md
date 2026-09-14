@@ -6,13 +6,30 @@ sidebar_position: 1
 
 ## Installation and Initialization
 
-First, install `protoconf-terraform` using Homebrew:
+First, install `protoconf-terraform` with the install script:
+
+```shell
+curl -s https://protoconf.dev/install | sh -s -- protoconf-terraform
+```
+
+This is the same script that installs protoconf itself; naming the package is
+the only difference. It verifies the download against the checksums published
+with the release and installs into `/usr/local/bin`, or `~/.local/bin` when
+that is not writable. `--version` and `--dir` work here too:
+
+```shell
+curl -s https://protoconf.dev/install | sh -s -- protoconf-terraform --version v0.1.6
+```
+
+On macOS it is also available from Homebrew:
 
 ```shell
 brew install protoconf/tap/protoconf-terraform
 ```
 
-Alternatively, download it from the [Github repository](https://github.com/protoconf/protoconf-terraform).
+Release archives can be downloaded by hand from the
+[protoconf-terraform releases page](https://github.com/protoconf/protoconf-terraform/releases)
+— Linux and macOS builds for `amd64` and `arm64`.
 
 Next, initialize the workspace:
 
