@@ -41,6 +41,13 @@ Check what you got:
 protoconf --version
 ```
 
+The same script installs `protoconf-terraform`, the Terraform importer — name
+the package as its argument:
+
+```bash
+curl -s https://protoconf.dev/install | sh -s -- protoconf-terraform
+```
+
 :::tip
 Piping any script into a shell runs whatever the server sends back. Read this one
 first if you'd rather see it: `curl -s https://protoconf.dev/install | less`.

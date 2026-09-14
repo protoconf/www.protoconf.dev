@@ -30,7 +30,14 @@ This command generates static content into the `build` directory and can be serv
 
 ```
 curl -s https://protoconf.dev/install | sh
+curl -s https://protoconf.dev/install | sh -s -- protoconf-terraform
 ```
+
+It installs one of the packages listed in its `select_package` function —
+today `protoconf` and `protoconf-terraform`, named as the one positional
+argument and defaulting to `protoconf`. Adding another means adding a case
+there with the repository, the platforms that repository builds, and a docs
+URL; nothing else in the script is package-specific.
 
 Docusaurus copies `static/` verbatim into `build/`, so the file is served at
 `/install` with no build step of its own. Two things it depends on:
@@ -43,13 +50,15 @@ Docusaurus copies `static/` verbatim into `build/`, so the file is served at
 - **`static/_headers`** sets `Content-Type: text/plain` for `/install` on
   Cloudflare, so the URL is readable in a browser instead of downloading.
 
-The script takes the release archives published by goreleaser from
-[protoconf/protoconf](https://github.com/protoconf/protoconf/releases), so its
-platform list has to stay in step with the build matrix in that repo's
-`.goreleaser.yaml`. Test a change to it end to end before merging:
+The script takes the release archives published by goreleaser, so the platform
+list for each package has to stay in step with the build matrix in that
+repository's `.goreleaser.yaml` — they are not the same today: protoconf
+publishes a `linux/386` build and protoconf-terraform does not. Test a change
+to it end to end, against every package, before merging:
 
 ```
 sh static/install --dir /tmp/protoconf-install-test
+sh static/install protoconf-terraform --dir /tmp/protoconf-install-test
 ```
 
 ### Deployment

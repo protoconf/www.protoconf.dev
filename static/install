@@ -3,11 +3,18 @@
 #
 #   curl -s https://protoconf.dev/install | sh
 #
-# Installs the protoconf CLI from the GitHub release archives published by
-# goreleaser (https://github.com/protoconf/protoconf/releases).
+# Installs a protoconf CLI from the GitHub release archives published by
+# goreleaser. The package to install is the one positional argument, and
+# defaults to `protoconf`:
+#
+#   protoconf             github.com/protoconf/protoconf
+#   protoconf-terraform   github.com/protoconf/protoconf-terraform
+#
+#   curl -s https://protoconf.dev/install | sh -s -- protoconf-terraform
 #
 # Options (flags, or the matching environment variable):
 #
+#                     PROTOCONF_PACKAGE      package to install, as above
 #   --version <tag>   PROTOCONF_VERSION      release to install, e.g. v0.2.0
 #                                            (default: the latest release)
 #   --dir <path>      PROTOCONF_INSTALL_DIR  directory to install into
@@ -22,7 +29,7 @@
 
 set -eu
 
-REPO="protoconf/protoconf"
+PACKAGE="${PROTOCONF_PACKAGE:-}"
 VERSION="${PROTOCONF_VERSION:-}"
 INSTALL_DIR="${PROTOCONF_INSTALL_DIR:-}"
 NO_VERIFY="${PROTOCONF_NO_VERIFY:-0}"
@@ -49,8 +56,9 @@ cleanup() {
 
 usage() {
 	cat <<'EOF'
-Usage: install [--version <tag>] [--dir <path>]
+Usage: install [package] [--version <tag>] [--dir <path>]
 
+  package          protoconf (default) or protoconf-terraform
   --version <tag>  release to install (default: the latest release)
   --dir <path>     directory to install into (default: /usr/local/bin when
                    writable, else ~/.local/bin)
@@ -83,11 +91,38 @@ parse_args() {
 			usage
 			exit 0
 			;;
-		*)
+		-*)
 			err "unknown option: $1 (try --help)"
+			;;
+		*)
+			[ -z "$PACKAGE" ] ||
+				err "more than one package given: $PACKAGE and $1"
+			PACKAGE="$1"
+			shift
 			;;
 		esac
 	done
+}
+
+# Fills in REPO, SUPPORTED and DOC_URL for the package being installed. The
+# platform lists come from each repository's .goreleaser.yaml build matrix, so
+# they have to be updated here when a repository adds or drops a target.
+select_package() {
+	case "$PACKAGE" in
+	protoconf)
+		REPO="protoconf/protoconf"
+		SUPPORTED="linux_amd64 linux_arm64 linux_386 darwin_amd64 darwin_arm64"
+		DOC_URL="https://www.protoconf.dev/docs/0.2.0/getting-started"
+		;;
+	protoconf-terraform)
+		REPO="protoconf/protoconf-terraform"
+		SUPPORTED="linux_amd64 linux_arm64 darwin_amd64 darwin_arm64"
+		DOC_URL="https://www.protoconf.dev/docs/0.2.0/integrations/terraform"
+		;;
+	*)
+		err "unknown package: $PACKAGE (known packages: protoconf, protoconf-terraform)"
+		;;
+	esac
 }
 
 # Downloads $1 to the file $2.
@@ -133,12 +168,13 @@ detect_platform() {
 	*) err "unsupported architecture: $arch. See https://github.com/$REPO/releases for the full list of builds." ;;
 	esac
 
-	# The release matrix has no 32-bit macOS build.
-	if [ "$os" = "darwin" ] && [ "$arch" = "386" ]; then
-		err "unsupported platform: darwin/386"
-	fi
-
 	PLATFORM="${os}_${arch}"
+
+	# Not every package is built for every platform.
+	case " $SUPPORTED " in
+	*" $PLATFORM "*) ;;
+	*) err "$PACKAGE has no $PLATFORM build. See https://github.com/$REPO/releases for what is published." ;;
+	esac
 }
 
 # Verifies $1 against checksums.txt in the same directory.
@@ -203,6 +239,9 @@ check_path() {
 main() {
 	parse_args "$@"
 
+	[ -n "$PACKAGE" ] || PACKAGE="protoconf"
+	select_package
+
 	have curl || have wget || err "need curl or wget to download the release"
 	have tar || err "need tar to unpack the release"
 
@@ -220,10 +259,10 @@ main() {
 	TMPDIR_PROTOCONF=$(mktemp -d 2>/dev/null || mktemp -d -t protoconf)
 	trap cleanup EXIT INT TERM
 
-	archive="protoconf_${version_number}_${PLATFORM}.tar.gz"
+	archive="${PACKAGE}_${version_number}_${PLATFORM}.tar.gz"
 	base_url="https://github.com/$REPO/releases/download/$VERSION"
 
-	say "Installing protoconf $VERSION ($PLATFORM) into $INSTALL_DIR"
+	say "Installing $PACKAGE $VERSION ($PLATFORM) into $INSTALL_DIR"
 
 	download "$base_url/$archive" "$TMPDIR_PROTOCONF/$archive"
 	if [ "$NO_VERIFY" != "1" ]; then
@@ -233,20 +272,24 @@ main() {
 
 	# -o keeps the extracted binary owned by the installing user rather than by
 	# whoever built the archive; both GNU tar and bsdtar read it that way.
-	tar -xzof "$TMPDIR_PROTOCONF/$archive" -C "$TMPDIR_PROTOCONF" protoconf ||
-		err "could not unpack protoconf from $archive"
+	tar -xzof "$TMPDIR_PROTOCONF/$archive" -C "$TMPDIR_PROTOCONF" "$PACKAGE" ||
+		err "could not unpack $PACKAGE from $archive"
 
-	chmod 0755 "$TMPDIR_PROTOCONF/protoconf"
+	chmod 0755 "$TMPDIR_PROTOCONF/$PACKAGE"
 	# mv keeps the replacement atomic when the target already exists and is
 	# running; a plain cp would write into the open binary.
-	mv -f "$TMPDIR_PROTOCONF/protoconf" "$INSTALL_DIR/protoconf" ||
+	mv -f "$TMPDIR_PROTOCONF/$PACKAGE" "$INSTALL_DIR/$PACKAGE" ||
 		err "could not install into $INSTALL_DIR"
 
-	# The CLI framework prints --version on stderr, hence the 2>&1.
-	installed=$("$INSTALL_DIR/protoconf" --version 2>&1 || true)
-	say "Installed ${installed:-protoconf $VERSION}"
+	# Running the binary catches an archive that does not match this machine
+	# here, rather than the first time someone uses it.
+	if "$INSTALL_DIR/$PACKAGE" --version >/dev/null 2>&1; then
+		say "Installed $PACKAGE $VERSION into $INSTALL_DIR"
+	else
+		say "Installed $PACKAGE $VERSION into $INSTALL_DIR, but '$PACKAGE --version' did not run"
+	fi
 	check_path
-	say "Run 'protoconf --help' to get started, or read https://www.protoconf.dev/docs/0.2.0/getting-started"
+	say "Run '$PACKAGE --help' to get started, or read $DOC_URL"
 }
 
 main "$@"
