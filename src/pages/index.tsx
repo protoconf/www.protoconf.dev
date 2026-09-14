@@ -26,6 +26,9 @@ function HomepageHeader() {
             What's new in v0.2.0
           </Link>
         </div>
+        <pre className={styles.install}>
+          <code>curl -s https://protoconf.dev/install | sh</code>
+        </pre>
       </div>
     </header>
   );

@@ -8,7 +8,26 @@ Running protoconf in a production environment requires careful consideration to 
 
 ## Installing protoconf
 
-You can install protoconf directly onto your server or use Docker. Docker images are available on Docker Hub and GitHub Container Registry:
+You can install protoconf directly onto your server or use Docker. On Linux and
+macOS hosts, the install script is the standard way to put the binary in place:
+
+```bash
+curl -s https://protoconf.dev/install | sh
+```
+
+In production, pin the release you qualified instead of tracking the latest one,
+and name the install directory explicitly so the result does not depend on which
+directories happen to be writable:
+
+```bash
+curl -s https://protoconf.dev/install | sh -s -- --version v0.2.0 --dir /usr/local/bin
+```
+
+The script verifies the download against the checksums published with the
+release. See [Getting Started](../getting-started.mdx#installation) for the full
+set of options.
+
+Docker images are available on Docker Hub and GitHub Container Registry:
 
 ```bash
 # Docker Hub
@@ -25,8 +44,6 @@ For macOS, you can also use `brew` to install protoconf:
 ```bash
 brew install protoconf/tap/protoconf
 ```
-
-For other platforms, download the latest version of protoconf from the official GitHub repository and install the executable into your PATH.
 
 ## Configuration Management
 

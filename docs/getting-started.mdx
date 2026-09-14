@@ -10,7 +10,45 @@ This guide will walk you through the installation of protoconf, creating a basic
 
 ## Installation
 
-protoconf can be installed via Homebrew on macOS:
+On Linux and macOS, install protoconf with the install script:
+
+```bash
+curl -s https://protoconf.dev/install | sh
+```
+
+The script picks the release archive for your platform, verifies it against the
+`checksums.txt` published with the release, and installs the `protoconf` binary
+into `/usr/local/bin` — or into `~/.local/bin` when `/usr/local/bin` is not
+writable, in which case it tells you how to put that directory on your `PATH`.
+
+To install a specific release, or to choose the directory yourself:
+
+```bash
+curl -s https://protoconf.dev/install | sh -s -- --version v0.2.0 --dir ~/bin
+```
+
+The same options are available as environment variables — `PROTOCONF_VERSION`
+and `PROTOCONF_INSTALL_DIR` — which is usually easier to read in a Dockerfile or
+a CI step:
+
+```bash
+curl -s https://protoconf.dev/install | PROTOCONF_VERSION=v0.2.0 sh
+```
+
+Check what you got:
+
+```bash
+protoconf --version
+```
+
+:::tip
+Piping any script into a shell runs whatever the server sends back. Read this one
+first if you'd rather see it: `curl -s https://protoconf.dev/install | less`.
+:::
+
+### Other installation methods
+
+On macOS, protoconf is also available from Homebrew:
 
 ```bash
 brew install protoconf/tap/protoconf
@@ -23,16 +61,10 @@ docker pull protoconf/protoconf:v0.2.0
 docker pull ghcr.io/protoconf/protoconf:v0.2.0
 ```
 
-For other platforms, download the latest release from the
-[protoconf GitHub repository](https://github.com/protoconf/protoconf/releases)
-and add the binary to your `PATH`. Linux and macOS builds are available for both
-`amd64` and `arm64`.
-
-Check what you got:
-
-```bash
-protoconf --help
-```
+Release archives can always be downloaded by hand from the
+[protoconf releases page](https://github.com/protoconf/protoconf/releases) —
+Linux builds for `amd64`, `arm64` and `386`, macOS builds for `amd64` and
+`arm64` — and the binary added to your `PATH`.
 
 ## Defining the Configuration Structure
 
