@@ -138,6 +138,8 @@ protoconf compile . myproject/server_config
 | `-compiler-address` | `PROTOCONF_COMPILER_COMPILER_ADDRESS` | | Compile through a remote compiler service instead of locally |
 | `-cpuprofile` | `PROTOCONF_COMPILER_CPUPROFILE` | | Write CPU profiling output to a file |
 | `-memprofile` | `PROTOCONF_COMPILER_MEMPROFILE` | | Write memory profiling output to a file |
+| `-log-level` | `PROTOCONF_COMPILER_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN` or `ERROR` (case-insensitive). New in v0.2.1 |
+| `-starlark-profile` | `PROTOCONF_COMPILER_STARLARK_PROFILE` | | Write a Starlark execution profile (gzipped pprof, wall time per Starlark function and line) to a file. View it with `go tool pprof`. Local compiles only. New in v0.2.1 |
 
 ## `protoconf insert`
 

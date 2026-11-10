@@ -20,7 +20,7 @@ and name the install directory explicitly so the result does not depend on which
 directories happen to be writable:
 
 ```bash
-curl -s https://protoconf.dev/install | sh -s -- --version v0.2.0 --dir /usr/local/bin
+curl -s https://protoconf.dev/install | sh -s -- --version v0.2.1 --dir /usr/local/bin
 ```
 
 The script verifies the download against the checksums published with the
@@ -31,10 +31,10 @@ Docker images are available on Docker Hub and GitHub Container Registry:
 
 ```bash
 # Docker Hub
-docker pull protoconf/protoconf:v0.2.0
+docker pull protoconf/protoconf:v0.2.1
 
 # GitHub Container Registry
-docker pull ghcr.io/protoconf/protoconf:v0.2.0
+docker pull ghcr.io/protoconf/protoconf:v0.2.1
 ```
 
 Pin an explicit tag in production rather than tracking a floating one.

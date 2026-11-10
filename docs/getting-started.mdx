@@ -24,7 +24,7 @@ writable, in which case it tells you how to put that directory on your `PATH`.
 To install a specific release, or to choose the directory yourself:
 
 ```bash
-curl -s https://protoconf.dev/install | sh -s -- --version v0.2.0 --dir ~/bin
+curl -s https://protoconf.dev/install | sh -s -- --version v0.2.1 --dir ~/bin
 ```
 
 The same options are available as environment variables — `PROTOCONF_VERSION`
@@ -32,7 +32,7 @@ and `PROTOCONF_INSTALL_DIR` — which is usually easier to read in a Dockerfile 
 a CI step:
 
 ```bash
-curl -s https://protoconf.dev/install | PROTOCONF_VERSION=v0.2.0 sh
+curl -s https://protoconf.dev/install | PROTOCONF_VERSION=v0.2.1 sh
 ```
 
 Check what you got:
@@ -64,8 +64,8 @@ brew install protoconf/tap/protoconf
 Container images are published to Docker Hub and the GitHub Container Registry:
 
 ```bash
-docker pull protoconf/protoconf:v0.2.0
-docker pull ghcr.io/protoconf/protoconf:v0.2.0
+docker pull protoconf/protoconf:v0.2.1
+docker pull ghcr.io/protoconf/protoconf:v0.2.1
 ```
 
 Release archives can always be downloaded by hand from the
